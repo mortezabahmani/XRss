@@ -18,30 +18,34 @@ export class XFeedProvider implements XDataProvider {
 
   async fetchPosts(): Promise<InternalPost[]> {
     const username = (this.config.username || '').replace(/^@/, '').trim();
-    
-    // Construct endpoints pool (custom endpoint first, followed by public Nitter mirrors)
-    const endpoints: string[] = [];
-    if (this.config.endpoint) {
-      endpoints.push(this.config.endpoint);
+    const customEndpoint = (this.config.endpoint || '').trim();
+
+    const targets: string[] = [];
+
+    // 1. Custom optional override endpoint first if set
+    if (customEndpoint) {
+      targets.push(customEndpoint);
     }
+
+    // 2. Built-in X provider endpoints for username (no Nitter dependency)
     if (username) {
-      endpoints.push(
-        `https://nitter.poast.org/${username}/rss`,
-        `https://nitter.privacydev.net/${username}/rss`,
-        `https://nitter.net/${username}/rss`
+      targets.push(
+        `https://syndication.twitter.com/srv/timeline-profile/history?screen_name=${username}`,
+        `https://cdn.syndication.twimg.com/widgets/timelines/p?screen_name=${username}`,
+        `https://api.vxtwitter.com/${username}`
       );
     }
 
-    if (endpoints.length === 0) {
+    if (targets.length === 0) {
       throw new Error('No X username or provider endpoint configured.');
     }
 
     let lastError: Error | null = null;
 
-    for (const endpoint of endpoints) {
+    for (const url of targets) {
       try {
-        const posts = await this.fetchFromUrl(endpoint);
-        if (posts.length > 0) {
+        const posts = await this.fetchFromUrl(url);
+        if (posts && posts.length > 0) {
           return posts;
         }
       } catch (err) {
@@ -49,7 +53,14 @@ export class XFeedProvider implements XDataProvider {
       }
     }
 
-    throw lastError || new Error('Failed to fetch X posts from all configured endpoints.');
+    throw (
+      lastError ||
+      new Error(
+        username
+          ? `Failed to fetch public posts for @${username}.`
+          : 'Failed to fetch posts from custom endpoint.'
+      )
+    );
   }
 
   private async fetchFromUrl(url: string): Promise<InternalPost[]> {
@@ -61,8 +72,10 @@ export class XFeedProvider implements XDataProvider {
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'User-Agent': this.config.userAgent || 'XRSS/1.0 (Mozilla/5.0 Compatible)',
-          'Accept': 'application/rss+xml, application/xml, application/json, text/xml'
+          'User-Agent':
+            this.config.userAgent ||
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+          'Accept': 'application/json, application/rss+xml, text/xml, text/html, */*'
         },
         signal: controller.signal
       });
@@ -78,13 +91,9 @@ export class XFeedProvider implements XDataProvider {
 
       if (contentType.includes('json') || text.trim().startsWith('{') || text.trim().startsWith('[')) {
         const json = JSON.parse(text);
-        if (Array.isArray(json)) {
-          rawPosts = json;
-        } else if (json && typeof json === 'object') {
-          const obj = json as Record<string, unknown>;
-          if (Array.isArray(obj.items)) rawPosts = obj.items;
-          else if (Array.isArray(obj.posts)) rawPosts = obj.posts;
-        }
+        rawPosts = this.extractPostsFromJson(json);
+      } else if (text.includes('__NEXT_DATA__')) {
+        rawPosts = this.extractPostsFromNextData(text);
       } else {
         rawPosts = this.parseXmlItems(text);
       }
@@ -104,6 +113,50 @@ export class XFeedProvider implements XDataProvider {
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  private extractPostsFromJson(json: any): any[] {
+    if (!json) return [];
+    if (Array.isArray(json)) return json;
+    if (typeof json === 'object') {
+      if (Array.isArray(json.items)) return json.items;
+      else if (Array.isArray(json.posts)) return json.posts;
+      else if (Array.isArray(json.tweets)) return json.tweets;
+      else if (Array.isArray(json.data)) return json.data;
+      // Single tweet or user object fallback
+      else if (json.id || json.id_str || json.tweet_id || json.text || json.content) {
+        return [json];
+      }
+    }
+    return [];
+  }
+
+  private extractPostsFromNextData(htmlText: string): any[] {
+    const items: any[] = [];
+    const match = /<script id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/s.exec(htmlText);
+    if (!match) return items;
+
+    try {
+      const data = JSON.parse(match[1]);
+      const timeline = data?.props?.pageProps?.timeline;
+      const entries = timeline?.entries || [];
+
+      for (const entry of entries) {
+        const tweet = entry?.content?.item?.content?.tweet || entry?.tweet;
+        if (tweet) {
+          items.push({
+            id: tweet.id_str || tweet.id,
+            url: `https://x.com/${tweet.user?.screen_name || 'i'}/status/${tweet.id_str || tweet.id}`,
+            title: tweet.full_text || tweet.text || 'X Post',
+            content: tweet.full_text || tweet.text || '',
+            author: tweet.user?.name || tweet.user?.screen_name || this.config.username || 'X User',
+            publishedAt: tweet.created_at || new Date().toISOString()
+          });
+        }
+      }
+    } catch {}
+
+    return items;
   }
 
   private parseXmlItems(xmlText: string): any[] {

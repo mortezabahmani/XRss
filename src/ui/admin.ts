@@ -261,7 +261,7 @@ export function renderAdminDashboardView(): string {
 
     <!-- Error Banner (if lastError exists) -->
     <div id="error-banner" class="alert alert-error" style="display: none; width: 100%;">
-      <strong>Last Upstream Error:</strong> <span id="error-text"></span>
+      <strong>Upstream Error:</strong> <span id="error-text"></span>
     </div>
 
     <!-- Settings & Operations Grid -->
@@ -271,20 +271,22 @@ export function renderAdminDashboardView(): string {
         <div class="card-title">X Feed Settings</div>
         <form onsubmit="saveConfig(event)" style="display: flex; flex-direction: column; gap: 12px;">
           <div>
-            <label>X (Twitter) Username</label>
-            <input type="text" id="cfg-username" placeholder="e.g. elonmusk">
+            <label>X Username</label>
+            <input type="text" id="cfg-username" placeholder="e.g. elonmusk" required>
+            <span style="font-size: 11px; color: var(--muted); margin-top: 4px; display: block;">Target public X handle (no @ required).</span>
           </div>
           <div>
-            <label>Fallback / Custom Endpoint URL</label>
-            <input type="url" id="cfg-endpoint" placeholder="https://nitter.poast.org/username/rss">
+            <label>Advanced Override (Optional RSS/JSON URL)</label>
+            <input type="url" id="cfg-endpoint" placeholder="https://example.com/custom-feed.xml">
+            <span style="font-size: 11px; color: var(--muted); margin-top: 4px; display: block;">Leave empty to use built-in X timeline provider.</span>
           </div>
           <div>
             <label>Feed Title</label>
-            <input type="text" id="cfg-title" placeholder="My X Feed">
+            <input type="text" id="cfg-title" placeholder="e.g. @username on X">
           </div>
           <div>
             <label>Feed Description</label>
-            <input type="text" id="cfg-desc" placeholder="Public posts from X">
+            <input type="text" id="cfg-desc" placeholder="e.g. Public posts from @username">
           </div>
           <div>
             <label>Max Retention Posts</label>
@@ -297,11 +299,11 @@ export function renderAdminDashboardView(): string {
         <div id="config-alert" class="alert"></div>
       </div>
 
-      <!-- Sync Controls & Runtime Info -->
+      <!-- Sync Controls & Scheduled Polling Info -->
       <div class="card">
-        <div class="card-title">Manual & Scheduled Sync</div>
+        <div class="card-title">Sync & Operations</div>
         <p style="color: var(--muted); font-size: 13px;">
-          Periodic updates run via Cloudflare Cron Triggers every 4 hours. Click below to execute an immediate fetch and update storage.
+          Scheduled background polling runs periodically every 4 hours via Cloudflare Cron. Click below to run an instant update for the configured X handle.
         </p>
         <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;">
           <button onclick="triggerSync()" class="btn btn-primary">Sync Now (/update)</button>
@@ -314,7 +316,7 @@ export function renderAdminDashboardView(): string {
     <!-- Posts Table -->
     <div class="card">
       <div class="card-title">
-        Cached Posts
+        Cached Feed Items
         <span id="posts-count-badge" style="font-size: 12px; font-weight: normal; color: var(--muted);">0 items</span>
       </div>
       <div style="overflow-x: auto;">
@@ -367,7 +369,7 @@ export function renderAdminDashboardView(): string {
           }
 
           if (data.xUsername) document.getElementById('cfg-username').value = data.xUsername;
-          if (data.providerEndpoint) document.getElementById('cfg-endpoint').value = data.providerEndpoint;
+          if (data.providerEndpoint !== undefined) document.getElementById('cfg-endpoint').value = data.providerEndpoint;
           if (data.feedTitle) document.getElementById('cfg-title').value = data.feedTitle;
           if (data.feedDescription) document.getElementById('cfg-desc').value = data.feedDescription;
           if (data.maxPosts) document.getElementById('cfg-max').value = data.maxPosts;

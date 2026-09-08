@@ -31,7 +31,7 @@ export function parseConfig(env: Env, requestUrl?: string): AppConfig {
   }
 
   const xUsername = (env.X_USERNAME || '').replace(/^@/, '').trim();
-  const providerEndpoint = env.PROVIDER_ENDPOINT || (xUsername ? `https://nitter.poast.org/${xUsername}/rss` : '');
+  const providerEndpoint = (env.PROVIDER_ENDPOINT || '').trim();
 
   return {
     environment: env.ENVIRONMENT || 'production',
@@ -52,8 +52,8 @@ export async function getRuntimeConfig(env: Env, requestUrl?: string): Promise<A
       const raw = await env.KV.get('app_config', 'json');
       if (raw && typeof raw === 'object') {
         const c = raw as Record<string, any>;
-        if (c.xUsername) base.xUsername = String(c.xUsername).replace(/^@/, '').trim();
-        if (c.providerEndpoint) base.providerEndpoint = String(c.providerEndpoint);
+        if (c.xUsername !== undefined) base.xUsername = String(c.xUsername).replace(/^@/, '').trim();
+        if (c.providerEndpoint !== undefined) base.providerEndpoint = String(c.providerEndpoint).trim();
         if (c.feedTitle) base.feedTitle = String(c.feedTitle);
         if (c.feedDescription) base.feedDescription = String(c.feedDescription);
         if (c.maxPosts) base.maxPosts = Number(c.maxPosts) || base.maxPosts;
@@ -62,8 +62,8 @@ export async function getRuntimeConfig(env: Env, requestUrl?: string): Promise<A
       const res = await env.DB.prepare('SELECT value FROM metadata WHERE key = ?').bind('app_config').first();
       if (res && res.value) {
         const c = JSON.parse(res.value as string);
-        if (c.xUsername) base.xUsername = String(c.xUsername).replace(/^@/, '').trim();
-        if (c.providerEndpoint) base.providerEndpoint = String(c.providerEndpoint);
+        if (c.xUsername !== undefined) base.xUsername = String(c.xUsername).replace(/^@/, '').trim();
+        if (c.providerEndpoint !== undefined) base.providerEndpoint = String(c.providerEndpoint).trim();
         if (c.feedTitle) base.feedTitle = String(c.feedTitle);
         if (c.feedDescription) base.feedDescription = String(c.feedDescription);
         if (c.maxPosts) base.maxPosts = Number(c.maxPosts) || base.maxPosts;
@@ -79,13 +79,7 @@ export async function saveRuntimeConfig(
 ): Promise<void> {
   const current = await getRuntimeConfig(env);
   const cleanUsername = (config.xUsername !== undefined ? config.xUsername : current.xUsername).replace(/^@/, '').trim();
-  
-  let endpoint = config.providerEndpoint?.trim();
-  if (!endpoint && cleanUsername) {
-    endpoint = `https://nitter.poast.org/${cleanUsername}/rss`;
-  } else if (!endpoint) {
-    endpoint = current.providerEndpoint;
-  }
+  const endpoint = (config.providerEndpoint !== undefined ? config.providerEndpoint : current.providerEndpoint).trim();
 
   const payload = {
     xUsername: cleanUsername,

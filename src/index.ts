@@ -1,7 +1,6 @@
-import { Env, parseConfig } from './config';
+import { Env } from './config';
 import { routeRequest } from './http/router';
-import { createStorage, D1StorageAdapter } from './storage';
-import { HttpDataProvider } from './providers/http_provider';
+import { runSync } from './http/handlers';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -9,27 +8,10 @@ export default {
   },
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    const storage = createStorage(env);
-    if (!storage) return;
-
     try {
-      if (env.DB && storage instanceof D1StorageAdapter) {
-        try {
-          await storage.initSchema();
-        } catch {}
-      }
-      const config = parseConfig(env);
-      if (!config.providerEndpoint) return;
-
-      const provider = new HttpDataProvider({ endpoint: config.providerEndpoint });
-      const posts = await provider.fetchPosts();
-
-      if (posts.length > 0) {
-        await storage.savePosts(posts);
-        await storage.setLastUpdate(new Date().toISOString());
-      }
+      await runSync(env);
     } catch (error) {
-      console.error('Scheduled update failed:', error);
+      console.error('Scheduled cron update failed:', error);
       // Preserves last known-good feed per ADR-007
     }
   }

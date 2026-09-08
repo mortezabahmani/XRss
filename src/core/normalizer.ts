@@ -15,7 +15,8 @@ export function normalizePost(raw: any): InternalPost {
 
   const id = String(raw.id || raw.guid || raw.url || raw.link || Math.random());
   const url = String(raw.url || raw.link || '').trim();
-  const title = String(raw.title || raw.text || 'Untitled').trim();
+  const rawTitle = String(raw.title || raw.text || 'Untitled').trim();
+  const title = sanitizeHtml(rawTitle).trim();
   const rawContent = String(raw.content || raw.description || raw.summary || raw.text || '');
   const content = sanitizeHtml(rawContent);
   const author = String(raw.author || raw.creator || raw.user?.name || 'Unknown').trim();
