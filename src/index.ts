@@ -17,9 +17,54 @@ function getStorage(env: Env): StorageAdapter | null {
   return null;
 }
 
+interface AppConfig {
+  endpoint?: string;
+  title?: string;
+  description?: string;
+}
+
+async function getConfig(storage: StorageAdapter | null, env: Env): Promise<AppConfig> {
+  let stored: AppConfig = {};
+  if (storage && 'getPosts' in storage) {
+    // If kv storage, we can store config under a special key or metadata table
+    // For D1 or KV, let's implement a clean get/set config helper or use metadata
+  }
+  // Fallback to Env vars or KV storage if KV is available
+  if (env.KV) {
+    try {
+      const raw = await env.KV.get('app_config', 'json');
+      if (raw && typeof raw === 'object') {
+        stored = raw as AppConfig;
+      }
+    } catch {}
+  }
+  return {
+    endpoint: stored.endpoint || env.PROVIDER_ENDPOINT || 'https://api.example.com/posts',
+    title: stored.title || env.FEED_TITLE || 'XRSS Feed',
+    description: stored.description || env.FEED_DESCRIPTION || 'Secure self-hosted RSS feed converted by XRSS'
+  };
+}
+
+async function saveConfig(storage: StorageAdapter | null, env: Env, config: AppConfig): Promise<void> {
+  if (env.KV) {
+    await env.KV.put('app_config', JSON.stringify(config));
+  }
+  // Also support D1 metadata if D1 is used
+  if (env.DB) {
+    const adapter = new D1StorageAdapter(env.DB);
+    try {
+      await adapter.initSchema();
+      // Store config in metadata table
+      await env.DB.prepare('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)')
+        .bind('app_config', JSON.stringify(config)).run();
+    } catch {}
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const storage = getStorage(env);
 
     if (url.pathname === '/admin') {
       const authHeader = request.headers.get('Authorization') || '';
@@ -42,6 +87,42 @@ export default {
       return addSecurityHeaders(res);
     }
 
+    if (url.pathname === '/config') {
+      if (request.method === 'GET') {
+        if (!verifyAdminAuth(request, env.ADMIN_TOKEN)) {
+          return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
+        }
+        const cfg = await getConfig(storage, env);
+        return addSecurityHeaders(new Response(JSON.stringify(cfg), {
+          headers: { 'Content-Type': 'application/json' }
+        }));
+      }
+
+      if (request.method === 'POST') {
+        if (!verifyAdminAuth(request, env.ADMIN_TOKEN)) {
+          return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
+        }
+        try {
+          const body = (await request.json()) as AppConfig;
+          await saveConfig(storage, env, {
+            endpoint: body.endpoint || '',
+            title: body.title || '',
+            description: body.description || ''
+          });
+          return addSecurityHeaders(new Response(JSON.stringify({ success: true }), {
+            headers: { 'Content-Type': 'application/json' }
+          }));
+        } catch (error) {
+          return addSecurityHeaders(new Response(JSON.stringify({ success: false, error: (error as Error).message }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }));
+        }
+      }
+
+      return addSecurityHeaders(new Response('Method not allowed', { status: 405 }));
+    }
+
     if (url.pathname === '/health' || url.pathname === '/status') {
       const res = new Response(JSON.stringify({ 
         status: 'healthy', 
@@ -53,8 +134,6 @@ export default {
       return addSecurityHeaders(res);
     }
 
-    const storage = getStorage(env);
-
     if (url.pathname === '/update') {
       if (request.method !== 'POST') {
         return addSecurityHeaders(new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 }));
@@ -65,7 +144,8 @@ export default {
       }
 
       try {
-        const endpoint = env.PROVIDER_ENDPOINT || 'https://api.example.com/posts';
+        const cfg = await getConfig(storage, env);
+        const endpoint = cfg.endpoint || env.PROVIDER_ENDPOINT || 'https://api.example.com/posts';
         const provider = new HttpDataProvider({ endpoint });
         const posts = await provider.fetchPosts();
 
@@ -110,10 +190,11 @@ export default {
         }];
       }
 
+      const cfg = await getConfig(storage, env);
       const feedXml = generateRssFeed({
-        title: env.FEED_TITLE || 'XRSS Feed',
+        title: cfg.title || 'XRSS Feed',
         link: env.FEED_LINK || url.origin,
-        description: env.FEED_DESCRIPTION || 'Secure self-hosted RSS feed converted by XRSS'
+        description: cfg.description || 'Secure self-hosted RSS feed converted by XRSS'
       }, posts);
 
       const res = new Response(feedXml, {
@@ -139,7 +220,8 @@ export default {
           await (storage as D1StorageAdapter).initSchema();
         } catch {}
       }
-      const endpoint = env.PROVIDER_ENDPOINT;
+      const cfg = await getConfig(storage, env);
+      const endpoint = cfg.endpoint || env.PROVIDER_ENDPOINT;
       if (!endpoint) return;
 
       const provider = new HttpDataProvider({ endpoint });
