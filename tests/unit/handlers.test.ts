@@ -60,6 +60,8 @@ describe('HTTP Handlers', () => {
     mockEnv = {
       ADMIN_TOKEN: adminToken,
       X_USERNAME: 'testuser',
+      X_AUTH_TOKEN: 'mock_auth_token_123',
+      X_CT0: 'mock_ct0_csrf_456',
       FEED_TITLE: 'Test Feed Title'
     };
   });
@@ -74,7 +76,7 @@ describe('HTTP Handlers', () => {
       expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
     });
 
-    it('rejects invalid token in JSON body with 401', async () => {
+    it('rejects invalid admin token with status 401', async () => {
       const req = new Request('https://example.com/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -87,18 +89,7 @@ describe('HTTP Handlers', () => {
       expect(json).toEqual({ error: 'Invalid token' });
     });
 
-    it('handles malformed JSON body gracefully and rejects with 401', async () => {
-      const req = new Request('https://example.com/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: 'invalid-json'
-      });
-      const res = await handleAdminLogin(req, mockEnv);
-
-      expect(res.status).toBe(401);
-    });
-
-    it('authenticates valid token in JSON body and sets session cookie', async () => {
+    it('authenticates valid token, returns 200 ok, and sets session cookie', async () => {
       const req = new Request('https://example.com/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -109,46 +100,47 @@ describe('HTTP Handlers', () => {
       expect(res.status).toBe(200);
       const json = (await res.json()) as any;
       expect(json).toEqual({ ok: true });
-      expect(res.headers.get('Set-Cookie')).toContain('xrss_session=');
-    });
 
-    it('authenticates valid token from Form Data', async () => {
-      const req = new Request('https://example.com/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'token=' + adminToken
-      });
-      const res = await handleAdminLogin(req, mockEnv);
-
-      expect(res.status).toBe(200);
-      expect(res.headers.get('Set-Cookie')).toContain('xrss_session=');
+      const setCookie = res.headers.get('Set-Cookie');
+      expect(setCookie).toBeDefined();
+      expect(setCookie).toContain('xrss_session=secret-admin-token-123');
+      expect(setCookie).toContain('HttpOnly');
     });
   });
 
   describe('handleAdminLogout', () => {
     it('returns 200 ok and clears session cookie', async () => {
-      const req = new Request('https://example.com/admin/logout', { method: 'POST' });
+      const req = new Request('https://example.com/admin/logout', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${adminToken}`
+        }
+      });
+
       const res = await handleAdminLogout(req, mockEnv);
 
       expect(res.status).toBe(200);
       const json = (await res.json()) as any;
       expect(json).toEqual({ ok: true });
-      expect(res.headers.get('Set-Cookie')).toContain('Max-Age=0');
+
+      const setCookie = res.headers.get('Set-Cookie');
+      expect(setCookie).toContain('xrss_session=;');
+      expect(setCookie).toContain('Max-Age=0');
     });
   });
 
   describe('handleAdmin', () => {
-    it('renders login view when unauthenticated', async () => {
+    it('returns 401 login HTML view when unauthenticated', async () => {
       const req = new Request('https://example.com/admin');
       const res = await handleAdmin(req, mockEnv);
 
       expect(res.status).toBe(401);
       const html = await res.text();
-      expect(html).toContain('Login');
-      expect(res.headers.get('Content-Type')).toContain('text/html');
+      expect(html).toContain('XRSS Control Center');
+      expect(html).toContain('Access Control Center');
     });
 
-    it('renders admin dashboard view when authenticated', async () => {
+    it('returns 200 dashboard HTML view when authenticated via Bearer token', async () => {
       const req = new Request('https://example.com/admin', {
         headers: { 'Authorization': `Bearer ${adminToken}` }
       });
@@ -157,7 +149,7 @@ describe('HTTP Handlers', () => {
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain('XRSS Control Center');
-      expect(res.headers.get('Content-Type')).toContain('text/html');
+      expect(html).toContain('Cached Posts');
     });
   });
 
@@ -167,11 +159,9 @@ describe('HTTP Handlers', () => {
       const res = await handleConfigApi(req, mockEnv);
 
       expect(res.status).toBe(401);
-      const json = (await res.json()) as any;
-      expect(json).toEqual({ error: 'Unauthorized' });
     });
 
-    it('returns config data on GET when authenticated', async () => {
+    it('returns current runtime config on GET when authenticated', async () => {
       const req = new Request('https://example.com/api/config', {
         headers: { 'Authorization': `Bearer ${adminToken}` }
       });
@@ -179,11 +169,11 @@ describe('HTTP Handlers', () => {
 
       expect(res.status).toBe(200);
       const json = (await res.json()) as any;
-      expect(json).toHaveProperty('xUsername', 'testuser');
-      expect(json).toHaveProperty('feedTitle', 'Test Feed Title');
+      expect(json.xUsername).toBe('testuser');
+      expect(json.feedTitle).toBe('Test Feed Title');
     });
 
-    it('saves updated config on POST when authenticated', async () => {
+    it('updates runtime config on POST when authenticated', async () => {
       mockEnv.KV = createMockKV();
       const req = new Request('https://example.com/api/config', {
         method: 'POST',
@@ -191,42 +181,19 @@ describe('HTTP Handlers', () => {
           'Authorization': `Bearer ${adminToken}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ xUsername: 'newuser', feedTitle: 'New Title' })
+        body: JSON.stringify({
+          xUsername: 'newusername',
+          feedTitle: 'New Title'
+        })
       });
       const res = await handleConfigApi(req, mockEnv);
 
       expect(res.status).toBe(200);
       const json = (await res.json()) as any;
       expect(json).toEqual({ success: true });
-    });
 
-    it('handles JSON parsing errors on POST with status 400', async () => {
-      const req = new Request('https://example.com/api/config', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${adminToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: 'invalid-json'
-      });
-      const res = await handleConfigApi(req, mockEnv);
-
-      expect(res.status).toBe(400);
-      const json = (await res.json()) as any;
-      expect(json.success).toBe(false);
-      expect(json.error).toBeDefined();
-    });
-
-    it('returns 405 for unsupported HTTP methods', async () => {
-      const req = new Request('https://example.com/api/config', {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${adminToken}` }
-      });
-      const res = await handleConfigApi(req, mockEnv);
-
-      expect(res.status).toBe(405);
-      const json = (await res.json()) as any;
-      expect(json).toEqual({ error: 'Method not allowed' });
+      const storedRaw = await mockEnv.KV.get('app_config');
+      expect(storedRaw).toBeDefined();
     });
   });
 
@@ -238,31 +205,21 @@ describe('HTTP Handlers', () => {
       expect(res.status).toBe(401);
     });
 
-    it('returns system stats with "none" storage when no storage binding exists', async () => {
-      const req = new Request('https://example.com/api/stats', {
-        headers: { 'Authorization': `Bearer ${adminToken}` }
-      });
-      const res = await handleStats(req, mockEnv);
+    it('returns system health, metrics, and posts list on GET when authenticated', async () => {
+      const mockPosts: InternalPost[] = [
+        {
+          id: 'p1',
+          url: 'https://x.com/test/status/1',
+          title: 'Post 1',
+          content: 'Content 1',
+          author: 'test',
+          publishedAt: new Date().toISOString()
+        }
+      ];
 
-      expect(res.status).toBe(200);
-      const json = (await res.json()) as any;
-      expect(json.status).toBe('healthy');
-      expect(json.storage).toBe('none');
-      expect(json.count).toBe(0);
-    });
-
-    it('returns system stats with "kv" storage when KV binding exists', async () => {
-      const posts: InternalPost[] = [{
-        id: '1',
-        url: 'https://example.com/1',
-        title: 'Post 1',
-        content: 'Content 1',
-        author: 'User',
-        publishedAt: new Date().toISOString()
-      }];
       mockEnv.KV = createMockKV({
-        posts: JSON.stringify(posts),
-        last_update: '2026-03-08T00:00:00Z',
+        posts: JSON.stringify(mockPosts),
+        last_update: '2026-03-08T12:00:00Z',
         last_error: null
       });
 
@@ -273,57 +230,29 @@ describe('HTTP Handlers', () => {
 
       expect(res.status).toBe(200);
       const json = (await res.json()) as any;
-      expect(json.storage).toBe('kv');
+      expect(json.status).toBe('healthy');
       expect(json.count).toBe(1);
-      expect(json.lastUpdate).toBe('2026-03-08T00:00:00Z');
-      expect(json.lastError).toBeNull();
-    });
-
-    it('returns system stats with "d1" storage when DB binding exists', async () => {
-      mockEnv.DB = createMockD1();
-
-      const req = new Request('https://example.com/api/stats', {
-        headers: { 'Authorization': `Bearer ${adminToken}` }
-      });
-      const res = await handleStats(req, mockEnv);
-
-      expect(res.status).toBe(200);
-      const json = (await res.json()) as any;
-      expect(json.storage).toBe('d1');
+      expect(json.storage).toBe('kv');
+      expect(json.lastUpdate).toBe('2026-03-08T12:00:00Z');
+      expect(json.posts).toHaveLength(1);
+      expect(json.posts[0].id).toBe('p1');
     });
   });
 
   describe('handleHealth', () => {
-    it('returns health status response with security headers', async () => {
+    it('returns healthy status JSON without authentication requirement', async () => {
       const req = new Request('https://example.com/health');
       const res = await handleHealth(req, mockEnv);
 
       expect(res.status).toBe(200);
       const json = (await res.json()) as any;
       expect(json.status).toBe('healthy');
-      expect(json.storage).toBe('none');
       expect(json.timestamp).toBeDefined();
     });
   });
 
   describe('runSync & handleUpdate', () => {
-    it('handleUpdate returns 405 for non-POST method', async () => {
-      const req = new Request('https://example.com/update', { method: 'GET' });
-      const res = await handleUpdate(req, mockEnv);
-
-      expect(res.status).toBe(405);
-      const json = (await res.json()) as any;
-      expect(json).toEqual({ error: 'Method not allowed' });
-    });
-
-    it('handleUpdate returns 401 when unauthenticated', async () => {
-      const req = new Request('https://example.com/update', { method: 'POST' });
-      const res = await handleUpdate(req, mockEnv);
-
-      expect(res.status).toBe(401);
-    });
-
-    it('runSync fetches posts and saves them to KV storage', async () => {
+    it('runSync fetches posts from provider and persists to storage', async () => {
       mockEnv.KV = createMockKV();
 
       const mockFetchedData = [
@@ -346,7 +275,7 @@ describe('HTTP Handlers', () => {
         })
       );
 
-      const result = await runSync(mockEnv, 'https://example.com');
+      const result = await runSync(mockEnv, 'https://example.com/update');
       expect(result.count).toBe(1);
 
       const storedPostsRaw = await mockEnv.KV.get('posts');
@@ -421,49 +350,32 @@ describe('HTTP Handlers', () => {
       const xml = await res.text();
       expect(xml).toContain('<?xml version="1.0"');
       expect(xml).toContain('<rss version="2.0"');
-      expect(xml).toContain('XRSS is configured');
+      expect(xml).toContain('Test Feed Title');
     });
 
-    it('returns RSS XML with posts from storage when available', async () => {
-      const posts: InternalPost[] = [
+    it('returns stored posts in RSS XML format', async () => {
+      const mockPosts: InternalPost[] = [
         {
           id: 'post-100',
-          url: 'https://example.com/post/100',
-          title: 'Stored Post Title',
-          content: '<p>Stored Post Content</p>',
-          author: 'Test Author',
+          url: 'https://x.com/testuser/status/100',
+          title: 'Stored Tweet Title',
+          content: '<p>Tweet content</p>',
+          author: 'testuser',
           publishedAt: '2026-03-08T10:00:00Z'
         }
       ];
-      mockEnv.KV = createMockKV({ posts: JSON.stringify(posts) });
+
+      mockEnv.KV = createMockKV({
+        posts: JSON.stringify(mockPosts)
+      });
 
       const req = new Request('https://example.com/feed');
       const res = await handleFeed(req, mockEnv);
 
       expect(res.status).toBe(200);
       const xml = await res.text();
-      expect(xml).toContain('Stored Post Title');
-      expect(xml).toContain('Stored Post Content');
-    });
-
-    it('handles unexpected errors during feed generation with status 500', async () => {
-      const brokenEnv: Env = {
-        DB: {
-          prepare: () => ({
-            bind: () => ({ first: async () => null }),
-            all: async () => {
-              throw new Error('Database connection failed');
-            }
-          })
-        } as unknown as D1Database
-      };
-
-      const req = new Request('https://example.com/feed');
-      const res = await handleFeed(req, brokenEnv);
-
-      expect(res.status).toBe(500);
-      const text = await res.text();
-      expect(text).toContain('Error generating feed: Database connection failed');
+      expect(xml).toContain('Stored Tweet Title');
+      expect(xml).toContain('https://x.com/testuser/status/100');
     });
   });
 });

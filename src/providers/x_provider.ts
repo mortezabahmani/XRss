@@ -1,14 +1,17 @@
 import { InternalPost, XDataProvider } from '../core/types';
 import { normalizePost } from '../core/normalizer';
 import { validatePost } from '../core/validator';
-import { parseXmlItems } from './xml_parser';
 
 export interface XProviderConfig {
   username?: string;
+  authToken?: string;
+  csrfToken?: string;
   endpoint?: string;
   timeoutMs?: number;
   userAgent?: string;
 }
+
+const DEFAULT_BEARER_TOKEN = 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 
 export class XFeedProvider implements XDataProvider {
   private config: XProviderConfig;
@@ -19,38 +22,64 @@ export class XFeedProvider implements XDataProvider {
 
   async fetchPosts(): Promise<InternalPost[]> {
     const username = (this.config.username || '').replace(/^@/, '').trim();
+    const authToken = (this.config.authToken || '').trim();
+    const csrfToken = (this.config.csrfToken || '').trim();
     const customEndpoint = (this.config.endpoint || '').trim();
-
-    const targets: string[] = [];
-
-    // 1. Custom optional override endpoint first if set
-    if (customEndpoint) {
-      targets.push(customEndpoint);
-    }
-
-    // 2. Built-in X provider endpoints for username
-    if (username) {
-      targets.push(
-        `https://api.fxtwitter.com/${username}`,
-        `https://api.vxtwitter.com/${username}`
-      );
-    }
-
-    if (targets.length === 0) {
-      throw new Error('No X username or provider endpoint configured.');
-    }
 
     let lastError: Error | null = null;
 
-    for (const url of targets) {
+    // 1. Authenticated Direct X API (GraphQL / v1.1 timeline with session cookies)
+    if (username && authToken && csrfToken) {
       try {
-        const posts = await this.fetchFromUrl(url);
+        const posts = await this.fetchAuthenticatedTimeline(username, authToken, csrfToken);
         if (posts && posts.length > 0) {
           return posts;
         }
       } catch (err) {
         lastError = err as Error;
       }
+    }
+
+    // 2. Custom optional override endpoint if set
+    if (customEndpoint) {
+      try {
+        const posts = await this.fetchFromUrl(customEndpoint);
+        if (posts && posts.length > 0) {
+          return posts;
+        }
+      } catch (err) {
+        lastError = err as Error;
+      }
+    }
+
+    // 3. Fallback to public endpoints
+    if (username) {
+      const publicTargets = [
+        `https://syndication.twitter.com/srv/timeline-profile/history?screen_name=${username}`,
+        `https://cdn.syndication.twimg.com/widgets/timelines/p?screen_name=${username}`,
+        `https://api.vxtwitter.com/${username}`
+      ];
+
+      for (const url of publicTargets) {
+        try {
+          const posts = await this.fetchFromUrl(url);
+          if (posts && posts.length > 0) {
+            return posts;
+          }
+        } catch (err) {
+          lastError = err as Error;
+        }
+      }
+    }
+
+    if (!username && !customEndpoint) {
+      throw new Error('No X username or provider endpoint configured.');
+    }
+
+    if (username && (!authToken || !csrfToken) && !customEndpoint) {
+      throw new Error(
+        `X_AUTH_TOKEN or X_CT0 is missing for @${username}. Please copy auth_token & ct0 cookies from x.com in your browser into Admin Settings.`
+      );
     }
 
     throw (
@@ -61,6 +90,134 @@ export class XFeedProvider implements XDataProvider {
           : 'Failed to fetch posts from custom endpoint.'
       )
     );
+  }
+
+  private async fetchAuthenticatedTimeline(
+    username: string,
+    authToken: string,
+    csrfToken: string
+  ): Promise<InternalPost[]> {
+    const headers = {
+      'Authorization': DEFAULT_BEARER_TOKEN,
+      'x-csrf-token': csrfToken,
+      'cookie': `auth_token=${authToken}; ct0=${csrfToken}`,
+      'User-Agent':
+        this.config.userAgent ||
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+      'x-twitter-active-user': 'yes',
+      'x-twitter-client-language': 'en',
+      'Accept': 'application/json, text/plain, */*'
+    };
+
+    const timeout = this.config.timeoutMs || 12000;
+
+    // Strategy A: X REST v1.1 user_timeline
+    try {
+      const v1Url = `https://api.x.com/1.1/statuses/user_timeline.json?screen_name=${encodeURIComponent(username)}&count=30&include_rts=true&tweet_mode=extended`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      const resp = await fetch(v1Url, { method: 'GET', headers, signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (resp.ok) {
+        const text = await resp.text();
+        const json = JSON.parse(text);
+        if (Array.isArray(json) && json.length > 0) {
+          const posts = this.processRawPosts(json);
+          if (posts.length > 0) return posts;
+        }
+      }
+    } catch {}
+
+    // Strategy B: X GraphQL UserByScreenName -> UserTweets
+    try {
+      const userGqlUrl = `https://x.com/i/api/graphql/sLVLhkPhdiv-HOWdYFiAuA/UserByScreenName?variables=${encodeURIComponent(
+        JSON.stringify({ screen_name: username, withSafetyModeUserFields: true })
+      )}&features=${encodeURIComponent(
+        JSON.stringify({
+          responsive_web_graphql_exclude_directive_enabled: true,
+          verified_phone_label_enabled: false,
+          responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
+          responsive_web_graphql_timeline_navigation_enabled: true
+        })
+      )}`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      const userResp = await fetch(userGqlUrl, { method: 'GET', headers, signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (userResp.ok) {
+        const userData = await userResp.json() as any;
+        const restId = userData?.data?.user?.result?.rest_id;
+
+        if (restId) {
+          const tweetsGqlUrl = `https://x.com/i/api/graphql/VfZDVyUt_hvfVjhGJuhccw/UserTweets?variables=${encodeURIComponent(
+            JSON.stringify({
+              userId: restId,
+              count: 30,
+              includePromotedContent: false,
+              withQuickPromoteEligibilityResponse: false,
+              withVoice: true,
+              withV2Timeline: true
+            })
+          )}&features=${encodeURIComponent(
+            JSON.stringify({
+              responsive_web_graphql_exclude_directive_enabled: true,
+              verified_phone_label_enabled: false,
+              responsive_web_graphql_timeline_navigation_enabled: true,
+              responsive_web_graphql_skip_user_profile_image_extensions_enabled: false
+            })
+          )}`;
+
+          const tController = new AbortController();
+          const tTimeoutId = setTimeout(() => tController.abort(), timeout);
+
+          const tweetsResp = await fetch(tweetsGqlUrl, { method: 'GET', headers, signal: tController.signal });
+          clearTimeout(tTimeoutId);
+
+          if (tweetsResp.ok) {
+            const tweetsData = await tweetsResp.json() as any;
+            const rawGqlTweets = this.extractGraphQLTweets(tweetsData);
+            if (rawGqlTweets.length > 0) {
+              const posts = this.processRawPosts(rawGqlTweets);
+              if (posts.length > 0) return posts;
+            }
+          }
+        }
+      }
+    } catch {}
+
+    throw new Error(`Direct X API authentication failed for @${username}. Check if auth_token / ct0 cookies expired.`);
+  }
+
+  private extractGraphQLTweets(data: any): any[] {
+    const tweets: any[] = [];
+    try {
+      const instructions = data?.data?.user?.result?.timeline_v2?.timeline?.instructions || [];
+      for (const inst of instructions) {
+        const entries = inst?.entries || (inst?.entry ? [inst.entry] : []);
+        for (const entry of entries) {
+          const result = entry?.content?.itemContent?.tweet_results?.result;
+          const tweetData = result?.tweet || result;
+          if (tweetData && tweetData.legacy) {
+            const legacy = tweetData.legacy;
+            const userLegacy = tweetData.core?.user_results?.result?.legacy || {};
+            tweets.push({
+              id: legacy.id_str || legacy.id || tweetData.rest_id,
+              url: `https://x.com/${userLegacy.screen_name || this.config.username || 'i'}/status/${legacy.id_str || legacy.id || tweetData.rest_id}`,
+              title: legacy.full_text || legacy.text || 'X Post',
+              content: legacy.full_text || legacy.text || '',
+              author: userLegacy.name || userLegacy.screen_name || this.config.username || 'X User',
+              publishedAt: legacy.created_at || new Date().toISOString()
+            });
+          }
+        }
+      }
+    } catch {}
+    return tweets;
   }
 
   private async fetchFromUrl(url: string): Promise<InternalPost[]> {
@@ -95,24 +252,28 @@ export class XFeedProvider implements XDataProvider {
       } else if (text.includes('__NEXT_DATA__')) {
         rawPosts = this.extractPostsFromNextData(text);
       } else {
-        rawPosts = parseXmlItems(text, this.config.username || 'X Post');
+        rawPosts = this.parseXmlItems(text);
       }
 
-      const validPosts: InternalPost[] = [];
-      const seenIds = new Set<string>();
-
-      for (const raw of rawPosts) {
-        const normalized = normalizePost(raw);
-        if (validatePost(normalized) && !seenIds.has(normalized.id)) {
-          seenIds.add(normalized.id);
-          validPosts.push(normalized);
-        }
-      }
-
-      return validPosts;
+      return this.processRawPosts(rawPosts);
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  private processRawPosts(rawPosts: unknown[]): InternalPost[] {
+    const validPosts: InternalPost[] = [];
+    const seenIds = new Set<string>();
+
+    for (const raw of rawPosts) {
+      const normalized = normalizePost(raw);
+      if (validatePost(normalized) && !seenIds.has(normalized.id)) {
+        seenIds.add(normalized.id);
+        validPosts.push(normalized);
+      }
+    }
+
+    return validPosts;
   }
 
   private extractPostsFromJson(json: any): any[] {
@@ -123,23 +284,8 @@ export class XFeedProvider implements XDataProvider {
       else if (Array.isArray(json.posts)) return json.posts;
       else if (Array.isArray(json.tweets)) return json.tweets;
       else if (Array.isArray(json.data)) return json.data;
-      else if (json.user && Array.isArray(json.user.tweets)) return json.user.tweets;
-      else if (json.tweet) return [json.tweet];
-      // Single tweet or post fallback
       else if (json.id || json.id_str || json.tweet_id || json.text || json.content) {
         return [json];
-      }
-      // FxTwitter / VxTwitter user object fallback
-      else if (json.user && (json.user.id || json.user.screen_name)) {
-        const u = json.user;
-        return [{
-          id: String(u.id || u.screen_name),
-          url: u.url || `https://x.com/${u.screen_name}`,
-          title: u.name || u.screen_name || 'X Profile',
-          content: u.description || u.raw_description?.text || '',
-          author: u.name || u.screen_name || this.config.username || 'X User',
-          publishedAt: u.joined || new Date().toISOString()
-        }];
       }
     }
     return [];
@@ -169,6 +315,38 @@ export class XFeedProvider implements XDataProvider {
         }
       }
     } catch {}
+
+    return items;
+  }
+
+  private parseXmlItems(xmlText: string): any[] {
+    const items: any[] = [];
+    const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = itemRegex.exec(xmlText)) !== null) {
+      const itemContent = match[1];
+      const getTag = (tag: string) => {
+        const m = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\/${tag}>`, 'i').exec(itemContent);
+        return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim() : '';
+      };
+
+      const title = getTag('title');
+      const link = getTag('link');
+      const description = getTag('description') || getTag('content:encoded');
+      const pubDate = getTag('pubDate');
+      const author = getTag('author') || getTag('dc:creator');
+      const guid = getTag('guid') || link;
+
+      items.push({
+        id: guid,
+        url: link,
+        title,
+        content: description,
+        author: author || this.config.username || 'X Post',
+        pubDate
+      });
+    }
 
     return items;
   }

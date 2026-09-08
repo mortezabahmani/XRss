@@ -7,6 +7,8 @@ export interface Env {
   FEED_DESCRIPTION?: string;
   PROVIDER_ENDPOINT?: string;
   X_USERNAME?: string;
+  X_AUTH_TOKEN?: string;
+  X_CT0?: string;
   ADMIN_TOKEN?: string;
   MAX_POSTS?: string;
 }
@@ -18,6 +20,8 @@ export interface AppConfig {
   feedDescription: string;
   providerEndpoint: string;
   xUsername: string;
+  xAuthToken: string;
+  xCrfToken: string;
   adminToken?: string;
   maxPosts: number;
 }
@@ -32,6 +36,8 @@ export function parseConfig(env: Env, requestUrl?: string): AppConfig {
 
   const xUsername = (env.X_USERNAME || '').replace(/^@/, '').trim();
   const providerEndpoint = (env.PROVIDER_ENDPOINT || '').trim();
+  const xAuthToken = (env.X_AUTH_TOKEN || '').trim();
+  const xCrfToken = (env.X_CT0 || '').trim();
 
   return {
     environment: env.ENVIRONMENT || 'production',
@@ -40,6 +46,8 @@ export function parseConfig(env: Env, requestUrl?: string): AppConfig {
     feedDescription: env.FEED_DESCRIPTION || (xUsername ? `Public posts from @${xUsername} on X` : 'Secure self-hosted RSS feed converted by XRSS'),
     providerEndpoint,
     xUsername,
+    xAuthToken,
+    xCrfToken,
     adminToken: env.ADMIN_TOKEN,
     maxPosts: env.MAX_POSTS ? parseInt(env.MAX_POSTS, 10) : 100
   };
@@ -53,6 +61,8 @@ export async function getRuntimeConfig(env: Env, requestUrl?: string): Promise<A
       if (raw && typeof raw === 'object') {
         const c = raw as Record<string, any>;
         if (c.xUsername !== undefined) base.xUsername = String(c.xUsername).replace(/^@/, '').trim();
+        if (c.xAuthToken !== undefined) base.xAuthToken = String(c.xAuthToken).trim();
+        if (c.xCrfToken !== undefined) base.xCrfToken = String(c.xCrfToken).trim();
         if (c.providerEndpoint !== undefined) base.providerEndpoint = String(c.providerEndpoint).trim();
         if (c.feedTitle) base.feedTitle = String(c.feedTitle);
         if (c.feedDescription) base.feedDescription = String(c.feedDescription);
@@ -63,6 +73,8 @@ export async function getRuntimeConfig(env: Env, requestUrl?: string): Promise<A
       if (res && res.value) {
         const c = JSON.parse(res.value as string);
         if (c.xUsername !== undefined) base.xUsername = String(c.xUsername).replace(/^@/, '').trim();
+        if (c.xAuthToken !== undefined) base.xAuthToken = String(c.xAuthToken).trim();
+        if (c.xCrfToken !== undefined) base.xCrfToken = String(c.xCrfToken).trim();
         if (c.providerEndpoint !== undefined) base.providerEndpoint = String(c.providerEndpoint).trim();
         if (c.feedTitle) base.feedTitle = String(c.feedTitle);
         if (c.feedDescription) base.feedDescription = String(c.feedDescription);
@@ -75,14 +87,26 @@ export async function getRuntimeConfig(env: Env, requestUrl?: string): Promise<A
 
 export async function saveRuntimeConfig(
   env: Env,
-  config: { xUsername?: string; providerEndpoint?: string; feedTitle?: string; feedDescription?: string; maxPosts?: number }
+  config: {
+    xUsername?: string;
+    xAuthToken?: string;
+    xCrfToken?: string;
+    providerEndpoint?: string;
+    feedTitle?: string;
+    feedDescription?: string;
+    maxPosts?: number;
+  }
 ): Promise<void> {
   const current = await getRuntimeConfig(env);
   const cleanUsername = (config.xUsername !== undefined ? config.xUsername : current.xUsername).replace(/^@/, '').trim();
   const endpoint = (config.providerEndpoint !== undefined ? config.providerEndpoint : current.providerEndpoint).trim();
+  const authToken = (config.xAuthToken !== undefined ? config.xAuthToken : current.xAuthToken).trim();
+  const csrfToken = (config.xCrfToken !== undefined ? config.xCrfToken : current.xCrfToken).trim();
 
   const payload = {
     xUsername: cleanUsername,
+    xAuthToken: authToken,
+    xCrfToken: csrfToken,
     providerEndpoint: endpoint,
     feedTitle: config.feedTitle?.trim() || current.feedTitle,
     feedDescription: config.feedDescription?.trim() || current.feedDescription,

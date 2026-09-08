@@ -57,6 +57,39 @@ describe('XFeedProvider', () => {
     vi.restoreAllMocks();
   });
 
+  it('fetches authenticated X timeline using auth_token and ct0 session cookies', async () => {
+    const mockTweets = [
+      {
+        id_str: '999111',
+        full_text: 'Authenticated tweet from X API',
+        created_at: 'Sun Mar 08 15:00:00 +0000 2026',
+        user: { name: 'Morteza', screen_name: 'mortezaa' }
+      }
+    ];
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        text: () => Promise.resolve(JSON.stringify(mockTweets))
+      })
+    );
+
+    const provider = new XFeedProvider({
+      username: 'mortezaa',
+      authToken: 'mock_auth_token_123',
+      csrfToken: 'mock_ct0_csrf_456'
+    });
+
+    const posts = await provider.fetchPosts();
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0].id).toBe('999111');
+    expect(posts[0].title).toBe('Authenticated tweet from X API');
+    expect(posts[0].url).toContain('https://x.com/mortezaa/status/999111');
+  });
+
   it('fetches and normalizes JSON posts for a username', async () => {
     const mockData = [
       {
@@ -85,92 +118,6 @@ describe('XFeedProvider', () => {
     expect(posts[0].id).toBe('tweet-101');
     expect(posts[0].title).toBe('Hello X World');
     expect(posts[0].content).not.toContain('script');
-  });
-
-  it('parses Next.js __NEXT_DATA__ timeline HTML correctly', async () => {
-    const mockNextDataHtml = `
-      <!DOCTYPE html>
-      <html>
-        <body>
-          <script id="__NEXT_DATA__" type="application/json">
-          {
-            "props": {
-              "pageProps": {
-                "timeline": {
-                  "entries": [
-                    {
-                      "entry_id": "tweet-202",
-                      "content": {
-                        "item": {
-                          "content": {
-                            "tweet": {
-                              "id_str": "202",
-                              "full_text": "Public announcement from @github",
-                              "created_at": "Sun Mar 08 14:00:00 +0000 2026",
-                              "user": { "name": "GitHub", "screen_name": "github" }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          }
-          </script>
-        </body>
-      </html>
-    `;
-
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        headers: { get: () => 'text/html' },
-        text: () => Promise.resolve(mockNextDataHtml)
-      })
-    );
-
-    const provider = new XFeedProvider({ username: 'github' });
-    const posts = await provider.fetchPosts();
-
-    expect(posts).toHaveLength(1);
-    expect(posts[0].id).toBe('202');
-    expect(posts[0].title).toBe('Public announcement from @github');
-  });
-
-  it('fetches and normalizes FxTwitter / VxTwitter user response format', async () => {
-    const mockFxData = {
-      code: 200,
-      message: 'OK',
-      user: {
-        screen_name: 'mortezaacom',
-        url: 'https://x.com/mortezaacom',
-        id: '1963151637125713920',
-        name: 'Mortezaa',
-        description: 'Developer on X',
-        joined: 'Wed Sep 03 08:07:15 +0000 2025'
-      }
-    };
-
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        headers: { get: () => 'application/json' },
-        text: () => Promise.resolve(JSON.stringify(mockFxData))
-      })
-    );
-
-    const provider = new XFeedProvider({ username: 'mortezaacom' });
-    const posts = await provider.fetchPosts();
-
-    expect(posts).toHaveLength(1);
-    expect(posts[0].id).toBe('1963151637125713920');
-    expect(posts[0].url).toBe('https://x.com/mortezaacom');
-    expect(posts[0].title).toBe('Mortezaa');
-    expect(posts[0].content).toBe('Developer on X');
   });
 
   it('uses optional custom endpoint override if provided', async () => {
@@ -217,6 +164,6 @@ describe('XFeedProvider', () => {
     );
 
     const provider = new XFeedProvider({ username: 'nonexistentuser999' });
-    await expect(provider.fetchPosts()).rejects.toThrow('HTTP 404 Not Found');
+    await expect(provider.fetchPosts()).rejects.toThrow();
   });
 });

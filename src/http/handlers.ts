@@ -95,6 +95,8 @@ export async function handleConfigApi(request: Request, env: Env): Promise<Respo
       new Response(
         JSON.stringify({
           xUsername: cfg.xUsername,
+          xAuthToken: cfg.xAuthToken ? '***' : '',
+          xCrfToken: cfg.xCrfToken ? '***' : '',
           providerEndpoint: cfg.providerEndpoint,
           feedTitle: cfg.feedTitle,
           feedDescription: cfg.feedDescription,
@@ -109,6 +111,8 @@ export async function handleConfigApi(request: Request, env: Env): Promise<Respo
     try {
       const body = (await request.json()) as {
         xUsername?: string;
+        xAuthToken?: string;
+        xCrfToken?: string;
         providerEndpoint?: string;
         feedTitle?: string;
         feedDescription?: string;
@@ -167,6 +171,8 @@ export async function handleStats(request: Request, env: Env): Promise<Response>
       lastUpdate,
       lastError,
       xUsername: cfg.xUsername,
+      hasAuthToken: !!cfg.xAuthToken,
+      hasCsrfToken: !!cfg.xCrfToken,
       providerEndpoint: cfg.providerEndpoint,
       feedTitle: cfg.feedTitle,
       feedDescription: cfg.feedDescription,
@@ -198,6 +204,8 @@ export async function runSync(env: Env, requestUrl?: string): Promise<{ count: n
 
   const provider = new XFeedProvider({
     username: cfg.xUsername,
+    authToken: cfg.xAuthToken,
+    csrfToken: cfg.xCrfToken,
     endpoint: cfg.providerEndpoint
   });
 
@@ -241,7 +249,6 @@ export async function handleUpdate(request: Request, env: Env): Promise<Response
     );
   } catch (error) {
     const errMsg = (error as Error).message;
-    // Record last error, preserve existing feed
     const storage = createStorage(env);
     if (storage) {
       try { await storage.setLastError(errMsg); } catch {}
@@ -277,7 +284,7 @@ export async function handleFeed(request: Request, env: Env): Promise<Response> 
         url: url.origin,
         title: cfg.feedTitle,
         content: cfg.xUsername
-          ? `<p>XRSS is configured. Set up the cron or hit <code>POST /update</code> (with Bearer token) to fetch posts from @${cfg.xUsername}.</p>`
+          ? `<p>XRSS is configured for @${cfg.xUsername}. Enter <code>auth_token</code> and <code>ct0</code> cookies in Admin Settings and click <strong>Sync Now</strong> to pull tweets.</p>`
           : '<p>XRSS is active. Configure X_USERNAME and ADMIN_TOKEN, then sync.</p>',
         author: 'XRSS System',
         publishedAt: new Date().toISOString()

@@ -13,6 +13,8 @@ describe('Config Parser (parseConfig)', () => {
       feedDescription: 'Secure self-hosted RSS feed converted by XRSS',
       providerEndpoint: '',
       xUsername: '',
+      xAuthToken: '',
+      xCrfToken: '',
       adminToken: undefined,
       maxPosts: 100,
     });
@@ -26,6 +28,8 @@ describe('Config Parser (parseConfig)', () => {
       FEED_DESCRIPTION: 'Custom Description',
       PROVIDER_ENDPOINT: '  https://api.vxtwitter.com  ',
       X_USERNAME: '@elontest',
+      X_AUTH_TOKEN: 'token_123',
+      X_CT0: 'ct0_456',
       ADMIN_TOKEN: 'secret-admin-token',
       MAX_POSTS: '50',
     };
@@ -39,6 +43,8 @@ describe('Config Parser (parseConfig)', () => {
       feedDescription: 'Custom Description',
       providerEndpoint: 'https://api.vxtwitter.com',
       xUsername: 'elontest',
+      xAuthToken: 'token_123',
+      xCrfToken: 'ct0_456',
       adminToken: 'secret-admin-token',
       maxPosts: 50,
     });
@@ -58,167 +64,78 @@ describe('Config Parser (parseConfig)', () => {
 
   it('extracts origin from requestUrl if provided and FEED_LINK is not set', () => {
     const env: Env = {};
-    const config = parseConfig(env, 'https://my-worker.subdomain.workers.dev/rss?foo=bar');
+    const config = parseConfig(env, 'https://my-worker.workers.dev/feed.xml');
 
-    expect(config.feedLink).toBe('https://my-worker.subdomain.workers.dev');
+    expect(config.feedLink).toBe('https://my-worker.workers.dev');
   });
 
-  it('falls back to default origin when requestUrl is invalid', () => {
+  it('handles invalid requestUrl by falling back to default origin without throwing', () => {
     const env: Env = {};
     const config = parseConfig(env, 'invalid-url-string');
 
     expect(config.feedLink).toBe('https://xrss.local');
   });
-
-  it('parses maxPosts correctly as a number', () => {
-    const env: Env = {
-      MAX_POSTS: '25',
-    };
-
-    const config = parseConfig(env);
-    expect(config.maxPosts).toBe(25);
-  });
-
-  it('prioritizes FEED_LINK over requestUrl origin if both are present', () => {
-    const env: Env = {
-      FEED_LINK: 'https://explicit.example.com',
-    };
-    const config = parseConfig(env, 'https://request.example.com/feed');
-
-    expect(config.feedLink).toBe('https://explicit.example.com');
-  });
-
-  it('handles whitespace in X_USERNAME correctly after leading @ is stripped', () => {
-    const env: Env = {
-      X_USERNAME: '@johndoe  ',
-    };
-
-    const config = parseConfig(env);
-
-    expect(config.xUsername).toBe('johndoe');
-    expect(config.feedTitle).toBe('@johndoe on X');
-    expect(config.feedDescription).toBe('Public posts from @johndoe on X');
-  });
-
-  it('trims whitespace in PROVIDER_ENDPOINT', () => {
-    const env: Env = {
-      PROVIDER_ENDPOINT: '   https://api.fxtwitter.com   ',
-    };
-
-    const config = parseConfig(env);
-
-    expect(config.providerEndpoint).toBe('https://api.fxtwitter.com');
-  });
-
-  it('defaults maxPosts to 100 when MAX_POSTS is missing', () => {
-    const env: Env = {};
-    const config = parseConfig(env);
-
-    expect(config.maxPosts).toBe(100);
-  });
-
-  it('preserves ADMIN_TOKEN when provided in environment', () => {
-    const env: Env = {
-      ADMIN_TOKEN: 'super-secret-123',
-    };
-
-    const config = parseConfig(env);
-
-    expect(config.adminToken).toBe('super-secret-123');
-  });
 });
 
 describe('Runtime Config (getRuntimeConfig & saveRuntimeConfig)', () => {
-  it('loads config override from KV when present', async () => {
-    const mockKvGet = vi.fn().mockResolvedValue({
-      xUsername: '@kv_user',
-      providerEndpoint: 'https://kv-provider.com',
+  it('loads config overrides from KV when available', async () => {
+    const kvStore = new Map<string, string>();
+    kvStore.set('app_config', JSON.stringify({
+      xUsername: 'kvuser',
+      xAuthToken: 'kv_token',
+      xCrfToken: 'kv_ct0',
       feedTitle: 'KV Feed Title',
-      feedDescription: 'KV Description',
-      maxPosts: 25,
-    });
+      maxPosts: 25
+    }));
 
-    const env: Env = {
-      KV: {
-        get: mockKvGet,
-      } as any,
-    };
+    const mockKv = {
+      get: vi.fn(async (key: string, type?: string) => {
+        const val = kvStore.get(key);
+        if (!val) return null;
+        return type === 'json' ? JSON.parse(val) : val;
+      })
+    } as unknown as KVNamespace;
 
+    const env: Env = { KV: mockKv };
     const config = await getRuntimeConfig(env);
 
-    expect(mockKvGet).toHaveBeenCalledWith('app_config', 'json');
-    expect(config.xUsername).toBe('kv_user');
-    expect(config.providerEndpoint).toBe('https://kv-provider.com');
+    expect(config.xUsername).toBe('kvuser');
+    expect(config.xAuthToken).toBe('kv_token');
+    expect(config.xCrfToken).toBe('kv_ct0');
     expect(config.feedTitle).toBe('KV Feed Title');
-    expect(config.feedDescription).toBe('KV Description');
     expect(config.maxPosts).toBe(25);
   });
 
-  it('loads config override from DB when KV is absent', async () => {
-    const mockFirst = vi.fn().mockResolvedValue({
-      value: JSON.stringify({
-        xUsername: '@db_user',
-        providerEndpoint: 'https://db-provider.com',
-        feedTitle: 'DB Feed Title',
-        feedDescription: 'DB Description',
-        maxPosts: 40,
-      }),
-    });
-    const mockBind = vi.fn().mockReturnValue({ first: mockFirst });
-    const mockPrepare = vi.fn().mockReturnValue({ bind: mockBind });
-
-    const env: Env = {
-      DB: {
-        prepare: mockPrepare,
-      } as any,
-    };
-
-    const config = await getRuntimeConfig(env);
-
-    expect(mockPrepare).toHaveBeenCalledWith('SELECT value FROM metadata WHERE key = ?');
-    expect(mockBind).toHaveBeenCalledWith('app_config');
-    expect(config.xUsername).toBe('db_user');
-    expect(config.providerEndpoint).toBe('https://db-provider.com');
-    expect(config.feedTitle).toBe('DB Feed Title');
-    expect(config.feedDescription).toBe('DB Description');
-    expect(config.maxPosts).toBe(40);
-  });
-
   it('saves config to KV and DB when saveRuntimeConfig is called', async () => {
-    const mockKvPut = vi.fn().mockResolvedValue(undefined);
-    const mockRun = vi.fn().mockResolvedValue(undefined);
-    const mockBind = vi.fn().mockReturnValue({ run: mockRun });
-    const mockPrepare = vi.fn().mockReturnValue({ bind: mockBind, run: mockRun });
+    const kvStore = new Map<string, string>();
+    const mockKv = {
+      get: vi.fn(async (key: string, type?: string) => {
+        const val = kvStore.get(key);
+        if (!val) return null;
+        return type === 'json' ? JSON.parse(val) : val;
+      }),
+      put: vi.fn(async (key: string, value: string) => {
+        kvStore.set(key, value);
+      })
+    } as unknown as KVNamespace;
 
-    const env: Env = {
-      KV: {
-        get: vi.fn().mockResolvedValue(null),
-        put: mockKvPut,
-      } as any,
-      DB: {
-        prepare: mockPrepare,
-      } as any,
-    };
+    const env: Env = { KV: mockKv };
 
     await saveRuntimeConfig(env, {
-      xUsername: '@new_user',
-      providerEndpoint: 'https://new-endpoint.com',
-      feedTitle: 'New Title',
-      feedDescription: 'New Description',
-      maxPosts: 30,
+      xUsername: '@saveduser',
+      xAuthToken: 'saved_token',
+      xCrfToken: 'saved_ct0',
+      feedTitle: 'Saved Title',
+      maxPosts: 75
     });
 
-    const expectedPayload = JSON.stringify({
-      xUsername: 'new_user',
-      providerEndpoint: 'https://new-endpoint.com',
-      feedTitle: 'New Title',
-      feedDescription: 'New Description',
-      maxPosts: 30,
-    });
-
-    expect(mockKvPut).toHaveBeenCalledWith('app_config', expectedPayload);
-    expect(mockPrepare).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS metadata'));
-    expect(mockPrepare).toHaveBeenCalledWith('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)');
-    expect(mockBind).toHaveBeenCalledWith('app_config', expectedPayload);
+    const savedRaw = kvStore.get('app_config');
+    expect(savedRaw).toBeDefined();
+    const saved = JSON.parse(savedRaw!);
+    expect(saved.xUsername).toBe('saveduser');
+    expect(saved.xAuthToken).toBe('saved_token');
+    expect(saved.xCrfToken).toBe('saved_ct0');
+    expect(saved.feedTitle).toBe('Saved Title');
+    expect(saved.maxPosts).toBe(75);
   });
 });

@@ -15,20 +15,28 @@ export function normalizePost(raw: unknown): InternalPost {
 
   const record = raw as Record<string, unknown>;
 
-  const id = String(record.id || record.guid || record.url || record.link || Math.random());
-  const url = String(record.url || record.link || '').trim();
-  const rawTitle = String(record.title || record.text || 'Untitled').trim();
-  const title = sanitizeHtml(rawTitle).trim();
-  const rawContent = String(
-    record.content || record.description || record.summary || record.text || ''
-  );
-  const content = sanitizeHtml(rawContent);
-
+  const id = String(record.id || record.id_str || record.guid || record.url || record.link || Math.random());
+  
   const userObj =
     typeof record.user === 'object' && record.user !== null
       ? (record.user as Record<string, unknown>)
       : null;
-  const rawAuthor = record.author || record.creator || userObj?.name;
+  const userScreenName = userObj?.screen_name ? String(userObj.screen_name) : '';
+  
+  let url = String(record.url || record.link || '').trim();
+  if (!url && (record.id_str || record.id)) {
+    const tweetId = String(record.id_str || record.id);
+    url = `https://x.com/${userScreenName || 'i'}/status/${tweetId}`;
+  }
+
+  const rawTitle = String(record.title || record.full_text || record.text || 'Untitled').trim();
+  const title = sanitizeHtml(rawTitle).trim();
+  const rawContent = String(
+    record.content || record.full_text || record.description || record.summary || record.text || ''
+  );
+  const content = sanitizeHtml(rawContent);
+
+  const rawAuthor = record.author || record.creator || userObj?.name || userObj?.screen_name;
   const author = String(rawAuthor || 'Unknown').trim();
 
   let publishedAt = String(
