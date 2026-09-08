@@ -1,5 +1,19 @@
 import { InternalPost, StorageAdapter } from '../core/types';
 
+interface D1PostRow {
+  id: string;
+  url: string;
+  title: string;
+  content: string;
+  author: string;
+  publishedAt: string;
+  mediaUrls?: string | null;
+}
+
+interface D1MetadataRow {
+  value: string;
+}
+
 export class D1StorageAdapter implements StorageAdapter {
   private db: D1Database;
 
@@ -31,9 +45,9 @@ export class D1StorageAdapter implements StorageAdapter {
   async getPosts(): Promise<InternalPost[]> {
     const { results } = await this.db.prepare(
       'SELECT * FROM posts ORDER BY publishedAt DESC LIMIT 100'
-    ).all();
+    ).all<D1PostRow>();
 
-    return (results || []).map((row: any) => ({
+    return (results || []).map((row: D1PostRow) => ({
       id: row.id,
       url: row.url,
       title: row.title,
@@ -70,9 +84,9 @@ export class D1StorageAdapter implements StorageAdapter {
   async getLastUpdate(): Promise<string | null> {
     const res = await this.db.prepare(
       'SELECT value FROM metadata WHERE key = ?'
-    ).bind('last_update').first();
+    ).bind('last_update').first<D1MetadataRow>();
 
-    return res ? (res.value as string) : null;
+    return res ? res.value : null;
   }
 
   async setLastUpdate(timestamp: string): Promise<void> {
@@ -84,9 +98,9 @@ export class D1StorageAdapter implements StorageAdapter {
   async getLastError(): Promise<string | null> {
     const res = await this.db.prepare(
       'SELECT value FROM metadata WHERE key = ?'
-    ).bind('last_error').first();
+    ).bind('last_error').first<D1MetadataRow>();
 
-    return res ? (res.value as string) : null;
+    return res ? res.value : null;
   }
 
   async setLastError(error: string | null): Promise<void> {
