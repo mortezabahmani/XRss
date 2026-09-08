@@ -1,22 +1,48 @@
 import { describe, it, expect } from 'vitest';
-import { verifyAdminAuth, addSecurityHeaders } from '../../src/security/middleware';
+import { verifyAdminAuth, safeCompare, addSecurityHeaders } from '../../src/security/middleware';
 
 describe('Security Middleware', () => {
-  it('verifies admin token correctly', () => {
+  describe('safeCompare', () => {
+    it('returns true for identical strings', async () => {
+      expect(await safeCompare('secret-123', 'secret-123')).toBe(true);
+      expect(await safeCompare('', '')).toBe(true);
+      expect(await safeCompare('🔑unicode-token', '🔑unicode-token')).toBe(true);
+    });
+
+    it('returns false for mismatched strings of same length', async () => {
+      expect(await safeCompare('secret-123', 'secret-124')).toBe(false);
+      expect(await safeCompare('a', 'b')).toBe(false);
+    });
+
+    it('returns false for strings of different lengths', async () => {
+      expect(await safeCompare('secret', 'secret-123')).toBe(false);
+      expect(await safeCompare('secret-123', 'secret')).toBe(false);
+      expect(await safeCompare('', 'non-empty')).toBe(false);
+    });
+  });
+
+  it('verifies admin token correctly', async () => {
     const adminToken = 'secret-token-123';
     
     const validReq = new Request('https://example.com/update', {
       headers: { 'Authorization': 'Bearer secret-token-123' }
     });
-    expect(verifyAdminAuth(validReq, adminToken)).toBe(true);
+    expect(await verifyAdminAuth(validReq, adminToken)).toBe(true);
+
+    const validCookieReq = new Request('https://example.com/admin', {
+      headers: { 'Cookie': 'xrss_session=secret-token-123' }
+    });
+    expect(await verifyAdminAuth(validCookieReq, adminToken)).toBe(true);
 
     const invalidReq = new Request('https://example.com/update', {
       headers: { 'Authorization': 'Bearer wrong-token' }
     });
-    expect(verifyAdminAuth(invalidReq, adminToken)).toBe(false);
+    expect(await verifyAdminAuth(invalidReq, adminToken)).toBe(false);
 
     const noAuthReq = new Request('https://example.com/update');
-    expect(verifyAdminAuth(noAuthReq, adminToken)).toBe(false);
+    expect(await verifyAdminAuth(noAuthReq, adminToken)).toBe(false);
+
+    expect(await verifyAdminAuth(validReq, undefined)).toBe(false);
   });
 
   it('adds security headers to response', async () => {

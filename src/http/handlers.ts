@@ -56,7 +56,7 @@ export async function handleAdminLogout(request: Request, env: Env): Promise<Res
 // ---------- ADMIN UI ----------
 
 export async function handleAdmin(request: Request, env: Env): Promise<Response> {
-  if (!verifyAdminAuth(request, env.ADMIN_TOKEN)) {
+  if (!(await verifyAdminAuth(request, env.ADMIN_TOKEN))) {
     const res = new Response(renderAdminLoginView(), {
       status: 401,
       headers: { 'Content-Type': 'text/html; charset=UTF-8' }
@@ -74,7 +74,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
 // ---------- API ----------
 
 export async function handleConfigApi(request: Request, env: Env): Promise<Response> {
-  if (!verifyAdminAuth(request, env.ADMIN_TOKEN)) {
+  if (!(await verifyAdminAuth(request, env.ADMIN_TOKEN))) {
     return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
   }
 
@@ -119,7 +119,7 @@ export async function handleConfigApi(request: Request, env: Env): Promise<Respo
 }
 
 export async function handleStats(request: Request, env: Env): Promise<Response> {
-  if (!verifyAdminAuth(request, env.ADMIN_TOKEN)) {
+  if (!(await verifyAdminAuth(request, env.ADMIN_TOKEN))) {
     return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
   }
 
@@ -201,7 +201,7 @@ export async function handleUpdate(request: Request, env: Env): Promise<Response
     return addSecurityHeaders(new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 }));
   }
 
-  if (!verifyAdminAuth(request, env.ADMIN_TOKEN)) {
+  if (!(await verifyAdminAuth(request, env.ADMIN_TOKEN))) {
     return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
   }
 
