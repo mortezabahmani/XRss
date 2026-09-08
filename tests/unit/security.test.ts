@@ -1,7 +1,27 @@
 import { describe, it, expect } from 'vitest';
-import { verifyAdminAuth, addSecurityHeaders } from '../../src/security/middleware';
+import { verifyAdminAuth, addSecurityHeaders, safeCompare } from '../../src/security/middleware';
 
 describe('Security Middleware', () => {
+  describe('safeCompare', () => {
+    it('returns true for identical strings', () => {
+      expect(safeCompare('secret123', 'secret123')).toBe(true);
+      expect(safeCompare('', '')).toBe(true);
+      expect(safeCompare('🔒-token-🔑', '🔒-token-🔑')).toBe(true);
+    });
+
+    it('returns false for different strings of same length', () => {
+      expect(safeCompare('secret123', 'secret124')).toBe(false);
+      expect(safeCompare('abc', 'xyz')).toBe(false);
+    });
+
+    it('returns false for strings of different lengths', () => {
+      expect(safeCompare('secret', 'secret123')).toBe(false);
+      expect(safeCompare('secret123', 'secret')).toBe(false);
+      expect(safeCompare('', 'a')).toBe(false);
+      expect(safeCompare('a', '')).toBe(false);
+    });
+  });
+
   it('verifies admin token correctly', () => {
     const adminToken = 'secret-token-123';
     
