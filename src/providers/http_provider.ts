@@ -69,8 +69,8 @@ export class HttpDataProvider implements XDataProvider {
     }
   }
 
-  private parseXmlItems(xmlText: string): any[] {
-    const items: any[] = [];
+  private parseXmlItems(xmlText: string): Record<string, unknown>[] {
+    const items: Record<string, unknown>[] = [];
     const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
     let match: RegExpExecArray | null;
 
