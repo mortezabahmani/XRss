@@ -46,15 +46,12 @@ export async function handleAdminLogin(request: Request, env: Env): Promise<Resp
 
 export async function handleAdminLogout(request: Request, env: Env): Promise<Response> {
   const authType = getAuthType(request, env.ADMIN_TOKEN);
-  if (!authType) {
-    return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
-  }
-
   if (authType === 'session' && !verifyCsrf(request)) {
     return addSecurityHeaders(new Response(JSON.stringify({ error: 'CSRF check failed' }), { status: 403 }));
   }
 
   const res = new Response(JSON.stringify({ ok: true }), {
+    status: 200,
     headers: { 'Content-Type': 'application/json' }
   });
   const headers = new Headers(res.headers);
@@ -88,6 +85,10 @@ export async function handleConfigApi(request: Request, env: Env): Promise<Respo
     return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
   }
 
+  if (authType === 'session' && request.method !== 'GET' && !verifyCsrf(request)) {
+    return addSecurityHeaders(new Response(JSON.stringify({ error: 'CSRF check failed' }), { status: 403 }));
+  }
+
   if (request.method === 'GET') {
     const cfg = await getRuntimeConfig(env, request.url);
     return addSecurityHeaders(
@@ -105,10 +106,6 @@ export async function handleConfigApi(request: Request, env: Env): Promise<Respo
   }
 
   if (request.method === 'POST') {
-    if (authType === 'session' && !verifyCsrf(request)) {
-      return addSecurityHeaders(new Response(JSON.stringify({ error: 'CSRF check failed' }), { status: 403 }));
-    }
-
     try {
       const body = (await request.json()) as {
         xUsername?: string;
@@ -133,12 +130,14 @@ export async function handleConfigApi(request: Request, env: Env): Promise<Respo
 }
 
 export async function handleStats(request: Request, env: Env): Promise<Response> {
-  if (!verifyAdminAuth(request, env.ADMIN_TOKEN)) {
+  const authType = getAuthType(request, env.ADMIN_TOKEN);
+  if (!authType) {
     return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
   }
 
   const storage = createStorage(env);
   const cfg = await getRuntimeConfig(env, request.url);
+
   let posts: InternalPost[] = [];
   let lastUpdate: string | null = null;
   let lastError: string | null = null;
@@ -147,12 +146,16 @@ export async function handleStats(request: Request, env: Env): Promise<Response>
     if (env.DB && storage instanceof D1StorageAdapter) {
       try { await storage.initSchema(); } catch {}
     }
+
     try {
-      [posts, lastUpdate, lastError] = await Promise.all([
+      const [fetchedPosts, fetchedLastUpdate, fetchedLastError] = await Promise.all([
         storage.getPosts(),
         storage.getLastUpdate(),
         storage.getLastError()
       ]);
+      posts = fetchedPosts;
+      lastUpdate = fetchedLastUpdate;
+      lastError = fetchedLastError;
     } catch {}
   }
 
@@ -204,9 +207,10 @@ export async function runSync(env: Env, requestUrl?: string): Promise<{ count: n
     if (env.DB && storage instanceof D1StorageAdapter) {
       try { await storage.initSchema(); } catch {}
     }
+    const timestamp = new Date().toISOString();
     await Promise.all([
       storage.savePosts(posts),
-      storage.setLastUpdate(new Date().toISOString()),
+      storage.setLastUpdate(timestamp),
       storage.setLastError(null)
     ]);
   }
@@ -297,7 +301,10 @@ export async function handleFeed(request: Request, env: Env): Promise<Response> 
     });
     return addSecurityHeaders(res);
   } catch (error) {
-    const res = new Response(`Error generating feed: ${(error as Error).message}`, { status: 500 });
+    const res = new Response(`Error generating feed: ${(error as Error).message}`, {
+      status: 500,
+      headers: { 'Content-Type': 'text/plain; charset=UTF-8' }
+    });
     return addSecurityHeaders(res);
   }
 }
