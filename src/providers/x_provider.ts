@@ -1,6 +1,7 @@
 import { InternalPost, XDataProvider } from '../core/types';
 import { normalizePost } from '../core/normalizer';
 import { validatePost } from '../core/validator';
+import { isSafeUrl } from '../security/ssrf';
 
 export interface XProviderConfig {
   username?: string;
@@ -64,6 +65,10 @@ export class XFeedProvider implements XDataProvider {
   }
 
   private async fetchFromUrl(url: string): Promise<InternalPost[]> {
+    if (!isSafeUrl(url)) {
+      throw new Error(`Invalid or unsafe provider URL: ${url}`);
+    }
+
     const timeout = this.config.timeoutMs || 10000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);

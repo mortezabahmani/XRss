@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { XFeedProvider } from '../../src/providers/x_provider';
+import { HttpDataProvider } from '../../src/providers/http_provider';
 
 describe('XFeedProvider', () => {
   beforeEach(() => {
@@ -134,5 +135,66 @@ describe('XFeedProvider', () => {
 
     const provider = new XFeedProvider({ username: 'nonexistentuser999' });
     await expect(provider.fetchPosts()).rejects.toThrow('HTTP 404 Not Found');
+  });
+
+  it('rejects unsafe SSRF target endpoints for custom X provider', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const provider = new XFeedProvider({ endpoint: 'http://169.254.169.254/latest/meta-data' });
+    await expect(provider.fetchPosts()).rejects.toThrow('Invalid or unsafe provider URL');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('HttpDataProvider', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('fetches posts from a safe URL endpoint', async () => {
+    const mockPosts = [
+      {
+        id: 'post-1',
+        url: 'https://example.com/post-1',
+        title: 'Safe Title',
+        content: 'Safe content'
+      }
+    ];
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        text: () => Promise.resolve(JSON.stringify(mockPosts))
+      })
+    );
+
+    const provider = new HttpDataProvider({ endpoint: 'https://example.com/api/posts' });
+    const posts = await provider.fetchPosts();
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0].id).toBe('post-1');
+  });
+
+  it('blocks SSRF requests to localhost and private IP addresses', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const unsafeEndpoints = [
+      'http://localhost/admin',
+      'http://127.0.0.1:8080/internal',
+      'http://10.0.0.1/secret',
+      'http://169.254.169.254/latest/meta-data',
+      'http://192.168.1.1/router'
+    ];
+
+    for (const url of unsafeEndpoints) {
+      const provider = new HttpDataProvider({ endpoint: url });
+      await expect(provider.fetchPosts()).rejects.toThrow('Invalid or unsafe provider endpoint URL');
+    }
+
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
