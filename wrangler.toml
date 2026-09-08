@@ -1,0 +1,6 @@
+name = "xrss"
+main = "src/index.ts"
+compatibility_date = "2024-11-06"
+
+[vars]
+ENVIRONMENT = "production"
