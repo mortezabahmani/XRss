@@ -1,17 +1,20 @@
 export function sanitizeHtml(html: string): string {
-  if (!html) return '';
-  
-  // Remove script, iframe, object, embed tags and their content
-  let clean = html.replace(/<\s*(script|iframe|object|embed)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '');
-  
-  // Remove self-closing or unclosed unsafe tags
-  clean = clean.replace(/<\s*\/?\s*(script|iframe|object|embed)[^>]*?>/gi, '');
-  
-  // Remove event handlers (onload, onerror, onclick, etc.)
+  if (!html || typeof html !== 'string') return '';
+
+  let clean = html;
+
+  // 1. Strip script, iframe, object, embed, applet, style, form tags & inner contents
+  clean = clean.replace(/<\s*(script|iframe|object|embed|applet|style|form)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '');
+
+  // 2. Strip unclosed or self-closing dangerous tags
+  clean = clean.replace(/<\s*\/?\s*(script|iframe|object|embed|applet|style|form)[^>]*?>/gi, '');
+
+  // 3. Remove event handler attributes (onload, onerror, onclick, onmouseover, etc.)
   clean = clean.replace(/\s+on[a-z]+\s*=\s*(?:["'][^"']*?["']|[^\s>]+)/gi, '');
-  
-  // Remove javascript: and unsafe data: URIs in href/src
-  clean = clean.replace(/(href|src)\s*=\s*(?:["']\s*javascript:[^"']*?["']|javascript:[^\s>]+)/gi, '$1=""');
+
+  // 4. Neutralize javascript: and unsafe data: URIs in href or src attributes
+  clean = clean.replace(/(href|src|action)\s*=\s*["']\s*(?:javascript|vbscript|data(?!\s*:\s*image\/)):[^"']*?["']/gi, '$1=""');
+  clean = clean.replace(/(href|src|action)\s*=\s*(?:javascript|vbscript|data(?!\s*:\s*image\/)):[^\s>]+/gi, '$1=""');
 
   return clean;
 }

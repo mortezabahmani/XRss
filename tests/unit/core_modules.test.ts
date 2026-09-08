@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { sanitizeHtml } from '../../src/security/sanitizer';
 import { validatePost } from '../../src/core/validator';
 import { generateRssFeed } from '../../src/rss/generator';
+import { isSafeUrl } from '../../src/security/ssrf';
 import { InternalPost } from '../../src/core/types';
 
 describe('Security & Core Modules', () => {
@@ -13,6 +14,13 @@ describe('Security & Core Modules', () => {
     expect(clean).not.toContain('javascript:');
     expect(clean).toContain('Hello');
     expect(clean).toContain('Link');
+  });
+
+  it('validates SSRF URL safety', () => {
+    expect(isSafeUrl('https://example.com/feed')).toBe(true);
+    expect(isSafeUrl('http://localhost/admin')).toBe(false);
+    expect(isSafeUrl('http://127.0.0.1/internal')).toBe(false);
+    expect(isSafeUrl('http://169.254.169.254/latest/meta-data')).toBe(false);
   });
 
   it('validates correct and incorrect posts', () => {

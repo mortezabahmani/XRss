@@ -1,13 +1,13 @@
 import { InternalPost } from '../core/types';
 
-interface FeedConfig {
+export interface FeedMeta {
   title: string;
   link: string;
   description: string;
   language?: string;
 }
 
-export function generateRssFeed(config: FeedConfig, posts: InternalPost[]): string {
+export function generateRssFeed(meta: FeedMeta, posts: InternalPost[]): string {
   const escapeXml = (str: string) => {
     return str
       .replace(/&/g, '&amp;')
@@ -34,11 +34,11 @@ export function generateRssFeed(config: FeedConfig, posts: InternalPost[]): stri
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>${escapeXml(config.title)}</title>
-    <link>${escapeXml(config.link)}</link>
-    <description>${escapeXml(config.description)}</description>
-    <language>${config.language || 'en-us'}</language>
-    <atom:link href="${escapeXml(config.link)}" rel="self" type="application/rss+xml"/>
+    <title>${escapeXml(meta.title)}</title>
+    <link>${escapeXml(meta.link)}</link>
+    <description>${escapeXml(meta.description)}</description>
+    <language>${meta.language || 'en-us'}</language>
+    <atom:link href="${escapeXml(meta.link)}" rel="self" type="application/rss+xml"/>
 ${itemsXml}
   </channel>
 </rss>`;

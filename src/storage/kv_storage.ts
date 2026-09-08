@@ -24,7 +24,7 @@ export class KVStorageAdapter implements StorageAdapter {
 
     const merged = Array.from(map.values())
       .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
-      .slice(0, 100);
+      .slice(0, 100); // Retain last 100
 
     await this.kv.put('posts', JSON.stringify(merged));
   }

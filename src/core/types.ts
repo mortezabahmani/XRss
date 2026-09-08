@@ -4,7 +4,7 @@ export interface InternalPost {
   title: string;
   content: string;
   author: string;
-  publishedAt: string; // ISO string
+  publishedAt: string; // ISO 8601 string
   updatedAt?: string;
   mediaUrls?: string[];
 }

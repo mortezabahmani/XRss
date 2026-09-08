@@ -1,5 +1,5 @@
 import { InternalPost, XDataProvider } from '../core/types';
-import { sanitizeHtml } from '../security/sanitizer';
+import { normalizePost } from '../core/normalizer';
 import { validatePost } from '../core/validator';
 
 export interface HttpProviderConfig {
@@ -25,7 +25,7 @@ export class HttpDataProvider implements XDataProvider {
         method: 'GET',
         headers: {
           'User-Agent': this.config.userAgent || 'XRSS/1.0',
-          'Accept': 'application/json, application/rss+xml, text/xml'
+          'Accept': 'application/json, application/rss+xml, text/xml, application/xml'
         },
         signal: controller.signal
       });
@@ -41,52 +41,38 @@ export class HttpDataProvider implements XDataProvider {
 
       if (contentType.includes('json') || text.trim().startsWith('{') || text.trim().startsWith('[')) {
         const json = JSON.parse(text);
-        // Support common JSON formats (array or items property)
         if (Array.isArray(json)) {
           rawPosts = json;
-        } else if (json && typeof json === 'object' && Array.isArray((json as any).items)) {
-          rawPosts = (json as any).items;
-        } else if (json && typeof json === 'object' && Array.isArray((json as any).posts)) {
-          rawPosts = (json as any).posts;
+        } else if (json && typeof json === 'object') {
+          const obj = json as Record<string, unknown>;
+          if (Array.isArray(obj.items)) rawPosts = obj.items;
+          else if (Array.isArray(obj.posts)) rawPosts = obj.posts;
+          else if (Array.isArray(obj.data)) rawPosts = obj.data;
         }
       } else {
-        // Simple XML/RSS parsing fallback or structured parsing if needed
-        // For v1 JSON/RSS provider, parse items via regex/DOM if XML
-        rawPosts = this.parseSimpleXmlItems(text);
+        rawPosts = this.parseXmlItems(text);
       }
 
-      const posts: InternalPost[] = [];
+      const validPosts: InternalPost[] = [];
       for (const raw of rawPosts) {
-        const normalized = this.normalizeRawPost(raw);
+        const normalized = normalizePost(raw);
         if (validatePost(normalized)) {
-          posts.push(normalized);
+          validPosts.push(normalized);
         }
       }
 
-      return posts;
+      return validPosts;
     } catch (error) {
-      throw new Error(`Failed to fetch and parse provider data: ${(error as Error).message}`);
+      throw new Error(`Failed to fetch provider data: ${(error as Error).message}`);
     } finally {
       clearTimeout(timeoutId);
     }
   }
 
-  private normalizeRawPost(raw: any): InternalPost {
-    return {
-      id: String(raw.id || raw.guid || raw.url || Math.random()),
-      url: String(raw.url || raw.link || ''),
-      title: String(raw.title || 'Untitled'),
-      content: sanitizeHtml(String(raw.content || raw.description || raw.summary || '')),
-      author: String(raw.author || raw.creator || 'Unknown'),
-      publishedAt: String(raw.publishedAt || raw.pubDate || raw.date || new Date().toISOString()),
-      mediaUrls: Array.isArray(raw.mediaUrls) ? raw.mediaUrls : []
-    };
-  }
-
-  private parseSimpleXmlItems(xmlText: string): any[] {
+  private parseXmlItems(xmlText: string): any[] {
     const items: any[] = [];
     const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
-    let match;
+    let match: RegExpExecArray | null;
 
     while ((match = itemRegex.exec(xmlText)) !== null) {
       const itemContent = match[1];
@@ -99,6 +85,7 @@ export class HttpDataProvider implements XDataProvider {
       const link = getTag('link');
       const description = getTag('description') || getTag('content:encoded');
       const pubDate = getTag('pubDate');
+      const author = getTag('author') || getTag('dc:creator');
       const guid = getTag('guid') || link;
 
       items.push({
@@ -106,6 +93,7 @@ export class HttpDataProvider implements XDataProvider {
         url: link,
         title,
         content: description,
+        author,
         pubDate
       });
     }

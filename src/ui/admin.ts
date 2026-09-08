@@ -1,4 +1,4 @@
-export function getAdminLoginHtml(): string {
+export function renderAdminLoginView(): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,11 +29,10 @@ export function getAdminLoginHtml(): string {
     .login-card {
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 10px;
       padding: 32px;
       width: 100%;
-      max-width: 400px;
-      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+      max-width: 380px;
     }
     h1 { font-size: 18px; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.02em; }
     p { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
@@ -48,22 +47,17 @@ export function getAdminLoginHtml(): string {
       font-size: 14px; font-weight: 500; border-radius: 6px; cursor: pointer; margin-top: 16px; transition: background 0.2s;
     }
     button:hover { background: #2563eb; }
-    .error {
-      margin-top: 12px; background: rgba(239, 68, 68, 0.1); border: 1px solid var(--error);
-      color: var(--error); padding: 8px 12px; border-radius: 6px; font-size: 12px;
-    }
   </style>
 </head>
 <body>
   <div class="login-card">
     <h1>XRSS Administration</h1>
-    <p>Enter your administrative token to access the secure operational dashboard.</p>
+    <p>Enter administrative token to access operational controls.</p>
     <form onsubmit="handleLogin(event)">
       <label>Admin Token</label>
       <input type="password" id="token" placeholder="Enter ADMIN_TOKEN..." required autofocus>
       <button type="submit">Authenticate</button>
     </form>
-    <div id="error-msg" class="error" style="display: none;">Invalid token. Please try again.</div>
   </div>
   <script>
     function handleLogin(e) {
@@ -76,7 +70,7 @@ export function getAdminLoginHtml(): string {
 </html>`;
 }
 
-export function getAdminDashboardHtml(): string {
+export function renderAdminDashboardView(): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -106,7 +100,7 @@ export function getAdminDashboardHtml(): string {
       min-height: 100vh;
     }
     .wrapper {
-      max-width: 900px;
+      max-width: 860px;
       margin: 0 auto;
       display: flex;
       flex-direction: column;
@@ -217,14 +211,14 @@ export function getAdminDashboardHtml(): string {
     <!-- Header -->
     <header>
       <h1>
-        XRSS Operational Dashboard
+        XRSS Dashboard
         <span class="badge">
           <span class="dot"></span>
-          Secure Session
+          Authenticated
         </span>
       </h1>
       <div style="display: flex; gap: 10px;">
-        <a href="/feed.xml" target="_blank" class="btn">View Live RSS Feed</a>
+        <a href="/feed.xml" target="_blank" class="btn">View RSS Feed</a>
         <button onclick="logout()" class="btn" style="border-color: rgba(239, 68, 68, 0.3); color: var(--error);">Logout</button>
       </div>
     </header>
@@ -245,11 +239,11 @@ export function getAdminDashboardHtml(): string {
       </div>
     </div>
 
-    <!-- Operations Panel (ADR-002 / ADR-003 Compliance) -->
+    <!-- Operations Panel -->
     <div class="card">
       <div class="card-title">Manual Synchronization Operations</div>
       <p style="color: var(--muted); font-size: 13px;">
-        Per architectural decision (ADR-002 / ADR-003), each XRSS deployment represents one statically configured feed (defined via environment variables / wrangler.toml secrets such as <code>PROVIDER_ENDPOINT</code>). Use the button below to trigger an immediate polling and normalization cycle.
+        Per architectural specification (ADR-002 / ADR-003), each deployment represents one statically configured feed. Trigger manual synchronization to poll the upstream provider endpoint.
       </p>
       <div>
         <button onclick="triggerSync()" class="btn btn-primary">Trigger Manual Sync (/update)</button>
@@ -258,12 +252,12 @@ export function getAdminDashboardHtml(): string {
     </div>
 
     <div class="card" style="color: var(--muted); font-size: 13px;">
-      <div class="card-title" style="color: var(--text);">Architecture & Compliance</div>
+      <div class="card-title" style="color: var(--text);">Architecture & Security Standards</div>
       <p>
-        <strong>ADR-002:</strong> One deployment represents one configured feed.<br>
-        <strong>ADR-003:</strong> Handle configuration via environment, not request parameters.<br>
-        <strong>ADR-004:</strong> No arbitrary proxying (SSRF protected).<br>
-        <strong>ADR-007:</strong> Upstream failure fallback preserves last known-good feed.
+        ● <strong>ADR-002:</strong> Single feed per deployment.<br>
+        ● <strong>ADR-003:</strong> Handle configuration via environment variables.<br>
+        ● <strong>ADR-007:</strong> Upstream failure fallback preserves last known-good feed.<br>
+        ● <strong>SSRF & XSS:</strong> Full payload sanitization & URL scheme validation.
       </p>
     </div>
   </div>
