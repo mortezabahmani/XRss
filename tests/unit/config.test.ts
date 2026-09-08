@@ -78,6 +78,54 @@ describe('Config Parser (parseConfig)', () => {
     const config = parseConfig(env);
     expect(config.maxPosts).toBe(25);
   });
+
+  it('prioritizes FEED_LINK over requestUrl origin if both are present', () => {
+    const env: Env = {
+      FEED_LINK: 'https://explicit.example.com',
+    };
+    const config = parseConfig(env, 'https://request.example.com/feed');
+
+    expect(config.feedLink).toBe('https://explicit.example.com');
+  });
+
+  it('handles whitespace in X_USERNAME correctly after leading @ is stripped', () => {
+    const env: Env = {
+      X_USERNAME: '@johndoe  ',
+    };
+
+    const config = parseConfig(env);
+
+    expect(config.xUsername).toBe('johndoe');
+    expect(config.feedTitle).toBe('@johndoe on X');
+    expect(config.feedDescription).toBe('Public posts from @johndoe on X');
+  });
+
+  it('trims whitespace in PROVIDER_ENDPOINT', () => {
+    const env: Env = {
+      PROVIDER_ENDPOINT: '   https://api.fxtwitter.com   ',
+    };
+
+    const config = parseConfig(env);
+
+    expect(config.providerEndpoint).toBe('https://api.fxtwitter.com');
+  });
+
+  it('defaults maxPosts to 100 when MAX_POSTS is missing', () => {
+    const env: Env = {};
+    const config = parseConfig(env);
+
+    expect(config.maxPosts).toBe(100);
+  });
+
+  it('preserves ADMIN_TOKEN when provided in environment', () => {
+    const env: Env = {
+      ADMIN_TOKEN: 'super-secret-123',
+    };
+
+    const config = parseConfig(env);
+
+    expect(config.adminToken).toBe('super-secret-123');
+  });
 });
 
 describe('Runtime Config (getRuntimeConfig & saveRuntimeConfig)', () => {
