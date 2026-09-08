@@ -11,7 +11,47 @@ export interface XProviderConfig {
   userAgent?: string;
 }
 
-const DEFAULT_BEARER_TOKEN = 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
+const DEFAULT_BEARER_TOKEN =
+  'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
+
+const USER_BY_SCREEN_NAME_QUERY_IDS = [
+  '1VOOyvKkiI3FMmkeDNxM9A',
+  'G3_K324f22R1e2nQ0vL5XQ',
+  'n3544y15P-3pS0i1l-3fyg',
+  'sLVLhkPhdiv-HOWdYFiAuA'
+];
+
+const USER_TWEETS_QUERY_IDS = [
+  'q6xj5bs0hapm9309hexA_g',
+  'VfZDVyUt_hvfVjhGJuhccw',
+  '_x-X8I-K1Yf21g_m'
+];
+
+const DEFAULT_FEATURE_FLAGS = {
+  responsive_web_graphql_exclude_directive_enabled: true,
+  verified_phone_label_enabled: false,
+  responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
+  responsive_web_graphql_timeline_navigation_enabled: true,
+  tweetypie_unmention_optimization_enabled: true,
+  responsive_web_edit_tweet_api_enabled: true,
+  graphql_is_translatable_rweb_tweet_is_translatable_enabled: true,
+  view_counts_everywhere_api_enabled: true,
+  longform_notetweets_consumption_enabled: true,
+  responsive_web_twitter_article_tweet_consumption_enabled: true,
+  tweet_awards_web_tipping_enabled: false,
+  freedom_of_speech_not_reach_fetch_enabled: true,
+  standardized_nudges_misinfo: true,
+  tweet_with_visibility_results_prefer_grok_responses: false,
+  rweb_video_timestamps_enabled: true,
+  longform_notetweets_rich_text_read_enabled: true,
+  longform_notetweets_inline_media_enabled: true,
+  responsive_web_enhance_cards_enabled: false,
+  creator_subscriptions_tweet_preview_api_enabled: true
+};
+
+const DEFAULT_FIELD_TOGGLES = {
+  withAuxiliaryUserLabels: true
+};
 
 function safeJsonParse<T = any>(text: string): T | null {
   if (!text || typeof text !== 'string' || !text.trim()) return null;
@@ -35,8 +75,14 @@ export class XFeedProvider implements XDataProvider {
     const rawCsrfToken = (this.config.csrfToken || '').trim().replace(/^["']|["']$/g, '');
     const customEndpoint = (this.config.endpoint || '').trim();
 
-    const authToken = (rawAuthToken === 'undefined' || rawAuthToken === 'null' || rawAuthToken === '***') ? '' : rawAuthToken;
-    const csrfToken = (rawCsrfToken === 'undefined' || rawCsrfToken === 'null' || rawCsrfToken === '***') ? '' : rawCsrfToken;
+    const authToken =
+      rawAuthToken === 'undefined' || rawAuthToken === 'null' || rawAuthToken === '***'
+        ? ''
+        : rawAuthToken;
+    const csrfToken =
+      rawCsrfToken === 'undefined' || rawCsrfToken === 'null' || rawCsrfToken === '***'
+        ? ''
+        : rawCsrfToken;
 
     let lastError: Error | null = null;
 
@@ -66,9 +112,7 @@ export class XFeedProvider implements XDataProvider {
 
     // 3. Fallback to public endpoints if available
     if (username && !authToken && !csrfToken) {
-      const publicTargets = [
-        `https://api.vxtwitter.com/${username}`
-      ];
+      const publicTargets = [`https://api.vxtwitter.com/${username}`];
 
       for (const url of publicTargets) {
         try {
@@ -108,26 +152,28 @@ export class XFeedProvider implements XDataProvider {
     csrfToken: string
   ): Promise<InternalPost[]> {
     const headers = {
-      'Authorization': DEFAULT_BEARER_TOKEN,
+      Authorization: DEFAULT_BEARER_TOKEN,
       'x-csrf-token': csrfToken,
-      'cookie': `auth_token=${authToken}; ct0=${csrfToken}`,
+      cookie: `auth_token=${authToken}; ct0=${csrfToken}`,
       'User-Agent':
         this.config.userAgent ||
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
       'x-twitter-active-user': 'yes',
       'x-twitter-client-language': 'en',
       'x-twitter-auth-type': 'OAuth2Session',
-      'Origin': 'https://x.com',
-      'Referer': `https://x.com/${encodeURIComponent(username)}`,
-      'Accept': 'application/json, text/plain, */*'
+      Origin: 'https://x.com',
+      Referer: `https://x.com/${encodeURIComponent(username)}`,
+      Accept: 'application/json, text/plain, */*'
     };
 
     const timeout = this.config.timeoutMs || 12000;
-    let authError: Error | null = null;
+    const strategyErrors: string[] = [];
 
     // Strategy A: X REST v1.1 user_timeline
     try {
-      const v1Url = `https://api.x.com/1.1/statuses/user_timeline.json?screen_name=${encodeURIComponent(username)}&count=30&include_rts=true&tweet_mode=extended`;
+      const v1Url = `https://api.x.com/1.1/statuses/user_timeline.json?screen_name=${encodeURIComponent(
+        username
+      )}&count=30&include_rts=true&tweet_mode=extended`;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -142,42 +188,72 @@ export class XFeedProvider implements XDataProvider {
           const posts = this.processRawPosts(json);
           if (posts.length > 0) return posts;
         }
-      } else if (json && json.errors && json.errors[0]) {
-        authError = new Error(`X API Error (${json.errors[0].code || resp.status}): ${json.errors[0].message}`);
       } else {
-        authError = new Error(`HTTP ${resp.status} ${resp.statusText} from X v1.1 API`);
+        const errDetail =
+          json && json.errors
+            ? JSON.stringify(json.errors)
+            : text || resp.statusText;
+        strategyErrors.push(`[Strategy A: REST v1.1 user_timeline] HTTP ${resp.status}: ${errDetail}`);
       }
     } catch (err) {
-      authError = err as Error;
+      strategyErrors.push(`[Strategy A: REST v1.1 user_timeline] Error: ${(err as Error).message}`);
     }
 
-    // Strategy B: X GraphQL UserByScreenName -> UserTweets
-    try {
-      const userGqlUrl = `https://x.com/i/api/graphql/sLVLhkPhdiv-HOWdYFiAuA/UserByScreenName?variables=${encodeURIComponent(
-        JSON.stringify({ screen_name: username, withSafetyModeUserFields: true })
-      )}&features=${encodeURIComponent(
-        JSON.stringify({
-          responsive_web_graphql_exclude_directive_enabled: true,
-          verified_phone_label_enabled: false,
-          responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
-          responsive_web_graphql_timeline_navigation_enabled: true
-        })
-      )}`;
+    // Strategy B: X GraphQL (Step 1: Resolve rest_id via UserByScreenName)
+    let restId: string | null = null;
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
+    for (const queryId of USER_BY_SCREEN_NAME_QUERY_IDS) {
+      try {
+        const userGqlUrl = `https://x.com/i/api/graphql/${queryId}/UserByScreenName?variables=${encodeURIComponent(
+          JSON.stringify({ screen_name: username, withSafetyModeUserFields: true })
+        )}&features=${encodeURIComponent(
+          JSON.stringify(DEFAULT_FEATURE_FLAGS)
+        )}&fieldToggles=${encodeURIComponent(
+          JSON.stringify(DEFAULT_FIELD_TOGGLES)
+        )}`;
 
-      const userResp = await fetch(userGqlUrl, { method: 'GET', headers, signal: controller.signal });
-      clearTimeout(timeoutId);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-      const userText = await userResp.text();
-      const userData = safeJsonParse(userText);
+        const userResp = await fetch(userGqlUrl, { method: 'GET', headers, signal: controller.signal });
+        clearTimeout(timeoutId);
 
-      if (userResp.ok) {
-        const restId = userData?.data?.user?.result?.rest_id;
+        const userText = await userResp.text();
+        const userData = safeJsonParse(userText);
 
-        if (restId) {
-          const tweetsGqlUrl = `https://x.com/i/api/graphql/VfZDVyUt_hvfVjhGJuhccw/UserTweets?variables=${encodeURIComponent(
+        if (userResp.ok) {
+          const foundRestId = userData?.data?.user?.result?.rest_id;
+          if (foundRestId) {
+            restId = foundRestId;
+            break;
+          } else if (userData?.errors) {
+            strategyErrors.push(
+              `[Strategy B: GraphQL UserByScreenName (${queryId})] HTTP ${userResp.status}: ${JSON.stringify(
+                userData.errors
+              )}`
+            );
+          }
+        } else {
+          const errDetail =
+            userData && userData.errors
+              ? JSON.stringify(userData.errors)
+              : userText || userResp.statusText;
+          strategyErrors.push(
+            `[Strategy B: GraphQL UserByScreenName (${queryId})] HTTP ${userResp.status}: ${errDetail}`
+          );
+        }
+      } catch (err) {
+        strategyErrors.push(
+          `[Strategy B: GraphQL UserByScreenName (${queryId})] Error: ${(err as Error).message}`
+        );
+      }
+    }
+
+    // Strategy B (Step 2: Fetch tweets via UserTweets for resolved rest_id)
+    if (restId) {
+      for (const tweetQueryId of USER_TWEETS_QUERY_IDS) {
+        try {
+          const tweetsGqlUrl = `https://x.com/i/api/graphql/${tweetQueryId}/UserTweets?variables=${encodeURIComponent(
             JSON.stringify({
               userId: restId,
               count: 30,
@@ -186,49 +262,60 @@ export class XFeedProvider implements XDataProvider {
               withVoice: true,
               withV2Timeline: true
             })
-          )}&features=${encodeURIComponent(
-            JSON.stringify({
-              responsive_web_graphql_exclude_directive_enabled: true,
-              verified_phone_label_enabled: false,
-              responsive_web_graphql_timeline_navigation_enabled: true,
-              responsive_web_graphql_skip_user_profile_image_extensions_enabled: false
-            })
-          )}`;
+          )}&features=${encodeURIComponent(JSON.stringify(DEFAULT_FEATURE_FLAGS))}`;
 
           const tController = new AbortController();
           const tTimeoutId = setTimeout(() => tController.abort(), timeout);
 
-          const tweetsResp = await fetch(tweetsGqlUrl, { method: 'GET', headers, signal: tController.signal });
+          const tweetsResp = await fetch(tweetsGqlUrl, {
+            method: 'GET',
+            headers,
+            signal: tController.signal
+          });
           clearTimeout(tTimeoutId);
 
           const tweetsText = await tweetsResp.text();
           const tweetsData = safeJsonParse(tweetsText);
 
           if (tweetsResp.ok) {
-            const rawGqlTweets = this.extractGraphQLTweets(tweetsData);
+            const rawGqlTweets = this.extractGraphQLTweets(tweetsData, username);
             if (rawGqlTweets.length > 0) {
               const posts = this.processRawPosts(rawGqlTweets);
               if (posts.length > 0) return posts;
             }
-          } else if (tweetsData && tweetsData.errors && tweetsData.errors[0]) {
-            authError = new Error(`X GraphQL Error (${tweetsData.errors[0].code || tweetsResp.status}): ${tweetsData.errors[0].message}`);
+          } else {
+            const errDetail =
+              tweetsData && tweetsData.errors
+                ? JSON.stringify(tweetsData.errors)
+                : tweetsText || tweetsResp.statusText;
+            strategyErrors.push(
+              `[Strategy B: GraphQL UserTweets (${tweetQueryId})] HTTP ${tweetsResp.status}: ${errDetail}`
+            );
           }
+        } catch (err) {
+          strategyErrors.push(
+            `[Strategy B: GraphQL UserTweets (${tweetQueryId})] Error: ${(err as Error).message}`
+          );
         }
-      } else if (userData && userData.errors && userData.errors[0]) {
-        authError = new Error(`X GraphQL User Error (${userData.errors[0].code || userResp.status}): ${userData.errors[0].message}`);
       }
-    } catch (err) {
-      if (!authError) authError = err as Error;
     }
 
-    throw authError || new Error(`X.com session authentication failed for @${username}. Check if auth_token / ct0 cookies expired.`);
+    const aggregatedErr =
+      strategyErrors.length > 0
+        ? strategyErrors.join(' | ')
+        : `X.com session authentication failed for @${username}. Check if auth_token / ct0 cookies expired.`;
+
+    throw new Error(aggregatedErr);
   }
 
-  private extractGraphQLTweets(data: any): any[] {
+  public extractGraphQLTweets(data: any, fallbackUsername?: string): any[] {
     const tweets: any[] = [];
     if (!data || typeof data !== 'object') return tweets;
     try {
-      const instructions = data?.data?.user?.result?.timeline_v2?.timeline?.instructions || [];
+      const userResult = data?.data?.user?.result;
+      const timeline = userResult?.timeline_v2?.timeline || userResult?.timeline?.timeline;
+      const instructions = timeline?.instructions || [];
+
       for (const inst of instructions) {
         const entries = inst?.entries || (inst?.entry ? [inst.entry] : []);
         for (const entry of entries) {
@@ -237,14 +324,20 @@ export class XFeedProvider implements XDataProvider {
           if (tweetData && tweetData.legacy) {
             const legacy = tweetData.legacy;
             const userLegacy = tweetData.core?.user_results?.result?.legacy || {};
-            tweets.push({
-              id: legacy.id_str || legacy.id || tweetData.rest_id,
-              url: `https://x.com/${userLegacy.screen_name || this.config.username || 'i'}/status/${legacy.id_str || legacy.id || tweetData.rest_id}`,
-              title: legacy.full_text || legacy.text || 'X Post',
-              content: legacy.full_text || legacy.text || '',
-              author: userLegacy.name || userLegacy.screen_name || this.config.username || 'X User',
-              publishedAt: legacy.created_at || new Date().toISOString()
-            });
+            const screenName = userLegacy.screen_name || fallbackUsername || this.config.username || 'i';
+            const tweetId = legacy.id_str || legacy.id || tweetData.rest_id;
+            const text = legacy.full_text || legacy.text;
+
+            if (tweetId && text) {
+              tweets.push({
+                id: String(tweetId),
+                url: `https://x.com/${screenName}/status/${tweetId}`,
+                title: text,
+                content: text,
+                author: userLegacy.name || userLegacy.screen_name || fallbackUsername || this.config.username || 'X User',
+                publishedAt: legacy.created_at || new Date().toISOString()
+              });
+            }
           }
         }
       }
@@ -264,13 +357,13 @@ export class XFeedProvider implements XDataProvider {
           'User-Agent':
             this.config.userAgent ||
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-          'Accept': 'application/json, application/rss+xml, text/xml, text/html, */*'
+          Accept: 'application/json, application/rss+xml, text/xml, text/html, */*'
         },
         signal: controller.signal
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status} ${response.statusText} from ${url}`);
+        throw new Error(`[Strategy C: Custom/Public Endpoint] HTTP ${response.status} ${response.statusText} from ${url}`);
       }
 
       const contentType = response.headers.get('content-type') || '';
@@ -298,7 +391,38 @@ export class XFeedProvider implements XDataProvider {
     const seenIds = new Set<string>();
 
     for (const raw of rawPosts) {
+      if (!raw || typeof raw !== 'object') continue;
+      const rec = raw as Record<string, any>;
+
+      // Explicit status check: Reject profile-only JSON payloads (which lack tweet status id or status text)
+      const tweetId = rec.id_str || rec.id || rec.rest_id || rec.guid;
+      const text = rec.full_text || rec.text || rec.content || rec.title;
+
+      if (!tweetId || !text || typeof text !== 'string' || !text.trim()) {
+        continue;
+      }
+
+      // Reject user profile objects that contain profile metadata without status text / status URL
+      if (
+        (rec.screen_name || rec.description || rec.followers_count) &&
+        !rec.id_str &&
+        !rec.tweet_id &&
+        !String(rec.url || '').includes('/status/')
+      ) {
+        continue;
+      }
+
+      const strId = String(tweetId).trim();
       const normalized = normalizePost(raw);
+
+      // Standardize status URL to https://x.com/{user}/status/{id}
+      if (!normalized.url.includes('/status/') && strId) {
+        const user = rec.user?.screen_name || rec.author || this.config.username || 'i';
+        normalized.url = `https://x.com/${user}/status/${strId}`;
+      } else if (normalized.url.includes('twitter.com/')) {
+        normalized.url = normalized.url.replace('twitter.com/', 'x.com/');
+      }
+
       if (validatePost(normalized) && !seenIds.has(normalized.id)) {
         seenIds.add(normalized.id);
         validPosts.push(normalized);
@@ -313,9 +437,17 @@ export class XFeedProvider implements XDataProvider {
     if (Array.isArray(json)) return json;
     if (typeof json === 'object') {
       if (Array.isArray(json.items)) return json.items;
-      else if (Array.isArray(json.posts)) return json.posts;
-      else if (Array.isArray(json.tweets)) return json.tweets;
-      else if (Array.isArray(json.data)) return json.data;
+      if (Array.isArray(json.posts)) return json.posts;
+      if (Array.isArray(json.tweets)) return json.tweets;
+      if (Array.isArray(json.data)) return json.data;
+
+      // Reject profile-only JSON payload without tweet items
+      if (json.screen_name || json.description || json.followers_count || json.user) {
+        if ((json.id_str || json.id) && (json.full_text || json.text) && (json.tweet_id || String(json.url || '').includes('/status/'))) {
+          return [json];
+        }
+        return [];
+      }
     }
     return [];
   }
