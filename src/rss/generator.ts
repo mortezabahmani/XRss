@@ -17,6 +17,10 @@ export function generateRssFeed(meta: FeedMeta, posts: InternalPost[]): string {
       .replace(/'/g, '&apos;');
   };
 
+  const escapeCdata = (str: string) => {
+    return str.replace(/\]\]>/g, ']]&gt;');
+  };
+
   const itemsXml = posts
     .map((post) => {
       const pubDate = new Date(post.publishedAt).toUTCString();
@@ -25,7 +29,7 @@ export function generateRssFeed(meta: FeedMeta, posts: InternalPost[]): string {
       <link>${escapeXml(post.url)}</link>
       <guid isPermaLink="true">${escapeXml(post.url)}</guid>
       <pubDate>${pubDate}</pubDate>
-      <description><![CDATA[${post.content}]]></description>
+      <description><![CDATA[${escapeCdata(post.content)}]]></description>
       <author>${escapeXml(post.author)}</author>
     </item>`;
     })
