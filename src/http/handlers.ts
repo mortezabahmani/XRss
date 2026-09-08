@@ -134,9 +134,11 @@ export async function handleStats(request: Request, env: Env): Promise<Response>
       try { await storage.initSchema(); } catch {}
     }
     try {
-      posts = await storage.getPosts();
-      lastUpdate = await storage.getLastUpdate();
-      lastError = await storage.getLastError();
+      [posts, lastUpdate, lastError] = await Promise.all([
+        storage.getPosts(),
+        storage.getLastUpdate(),
+        storage.getLastError()
+      ]);
     } catch {}
   }
 
