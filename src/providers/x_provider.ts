@@ -26,8 +26,8 @@ export class XFeedProvider implements XDataProvider {
     const rawCsrfToken = (this.config.csrfToken || '').trim();
     const customEndpoint = (this.config.endpoint || '').trim();
 
-    const authToken = (rawAuthToken === 'undefined' || rawAuthToken === 'null') ? '' : rawAuthToken;
-    const csrfToken = (rawCsrfToken === 'undefined' || rawCsrfToken === 'null') ? '' : rawCsrfToken;
+    const authToken = (rawAuthToken === 'undefined' || rawAuthToken === 'null' || rawAuthToken === '***') ? '' : rawAuthToken;
+    const csrfToken = (rawCsrfToken === 'undefined' || rawCsrfToken === 'null' || rawCsrfToken === '***') ? '' : rawCsrfToken;
 
     let lastError: Error | null = null;
 
@@ -55,11 +55,9 @@ export class XFeedProvider implements XDataProvider {
       }
     }
 
-    // 3. Fallback to public endpoints
-    if (username) {
+    // 3. Fallback to public endpoints if available
+    if (username && !authToken && !csrfToken) {
       const publicTargets = [
-        `https://syndication.twitter.com/srv/timeline-profile/history?screen_name=${username}`,
-        `https://cdn.syndication.twimg.com/widgets/timelines/p?screen_name=${username}`,
         `https://api.vxtwitter.com/${username}`
       ];
 
@@ -81,7 +79,7 @@ export class XFeedProvider implements XDataProvider {
 
     if (username && (!authToken || !csrfToken) && !customEndpoint) {
       throw new Error(
-        `auth_token is missing or invalid for @${username}. Note: auth_token is HttpOnly so document.cookie cannot read it. Please copy auth_token from F12 -> Application -> Cookies -> https://x.com.`
+        `X.com auth_token or ct0 cookie is missing for @${username}. Note: auth_token is HttpOnly so document.cookie cannot read it. Copy auth_token from F12 -> Application -> Cookies -> https://x.com.`
       );
     }
 
@@ -89,7 +87,7 @@ export class XFeedProvider implements XDataProvider {
       lastError ||
       new Error(
         username
-          ? `Failed to fetch public posts for @${username}.`
+          ? `Failed to fetch public posts for @${username}. Check if auth_token / ct0 cookies expired.`
           : 'Failed to fetch posts from custom endpoint.'
       )
     );
@@ -113,6 +111,7 @@ export class XFeedProvider implements XDataProvider {
     };
 
     const timeout = this.config.timeoutMs || 12000;
+    let authError: Error | null = null;
 
     // Strategy A: X REST v1.1 user_timeline
     try {
@@ -130,8 +129,12 @@ export class XFeedProvider implements XDataProvider {
           const posts = this.processRawPosts(json);
           if (posts.length > 0) return posts;
         }
+      } else {
+        authError = new Error(`HTTP ${resp.status} ${resp.statusText}`);
       }
-    } catch {}
+    } catch (err) {
+      authError = err as Error;
+    }
 
     // Strategy B: X GraphQL UserByScreenName -> UserTweets
     try {
@@ -191,9 +194,11 @@ export class XFeedProvider implements XDataProvider {
           }
         }
       }
-    } catch {}
+    } catch (err) {
+      if (!authError) authError = err as Error;
+    }
 
-    throw new Error(`Direct X API authentication failed for @${username}. Check if auth_token / ct0 cookies expired.`);
+    throw authError || new Error(`X.com session authentication failed for @${username}. Check if auth_token / ct0 cookies expired.`);
   }
 
   private extractGraphQLTweets(data: any): any[] {

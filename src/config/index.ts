@@ -1,3 +1,5 @@
+import { encryptSecret, decryptSecret } from '../security/encryption';
+
 export interface Env {
   DB?: D1Database;
   KV?: KVNamespace;
@@ -55,33 +57,41 @@ export function parseConfig(env: Env, requestUrl?: string): AppConfig {
 
 export async function getRuntimeConfig(env: Env, requestUrl?: string): Promise<AppConfig> {
   const base = parseConfig(env, requestUrl);
+  const masterKey = env.ADMIN_TOKEN || 'xrss-default-key';
+
   try {
+    let storedConfig: Record<string, any> | null = null;
+
     if (env.KV) {
-      const raw = await env.KV.get('app_config', 'json');
-      if (raw && typeof raw === 'object') {
-        const c = raw as Record<string, any>;
-        if (c.xUsername !== undefined) base.xUsername = String(c.xUsername).replace(/^@/, '').trim();
-        if (c.xAuthToken !== undefined) base.xAuthToken = String(c.xAuthToken).trim();
-        if (c.xCrfToken !== undefined) base.xCrfToken = String(c.xCrfToken).trim();
-        if (c.providerEndpoint !== undefined) base.providerEndpoint = String(c.providerEndpoint).trim();
-        if (c.feedTitle) base.feedTitle = String(c.feedTitle);
-        if (c.feedDescription) base.feedDescription = String(c.feedDescription);
-        if (c.maxPosts) base.maxPosts = Number(c.maxPosts) || base.maxPosts;
-      }
+      storedConfig = await env.KV.get('app_config', 'json');
     } else if (env.DB) {
       const res = await env.DB.prepare('SELECT value FROM metadata WHERE key = ?').bind('app_config').first();
       if (res && res.value) {
-        const c = JSON.parse(res.value as string);
-        if (c.xUsername !== undefined) base.xUsername = String(c.xUsername).replace(/^@/, '').trim();
-        if (c.xAuthToken !== undefined) base.xAuthToken = String(c.xAuthToken).trim();
-        if (c.xCrfToken !== undefined) base.xCrfToken = String(c.xCrfToken).trim();
-        if (c.providerEndpoint !== undefined) base.providerEndpoint = String(c.providerEndpoint).trim();
-        if (c.feedTitle) base.feedTitle = String(c.feedTitle);
-        if (c.feedDescription) base.feedDescription = String(c.feedDescription);
-        if (c.maxPosts) base.maxPosts = Number(c.maxPosts) || base.maxPosts;
+        storedConfig = JSON.parse(res.value as string);
       }
     }
-  } catch {}
+
+    if (storedConfig && typeof storedConfig === 'object') {
+      if (storedConfig.xUsername !== undefined) base.xUsername = String(storedConfig.xUsername).replace(/^@/, '').trim();
+      
+      if (storedConfig.xAuthToken) {
+        const decToken = await decryptSecret(String(storedConfig.xAuthToken), masterKey);
+        if (decToken) base.xAuthToken = decToken;
+      }
+      if (storedConfig.xCrfToken) {
+        const decCrf = await decryptSecret(String(storedConfig.xCrfToken), masterKey);
+        if (decCrf) base.xCrfToken = decCrf;
+      }
+
+      if (storedConfig.providerEndpoint !== undefined) base.providerEndpoint = String(storedConfig.providerEndpoint).trim();
+      if (storedConfig.feedTitle) base.feedTitle = String(storedConfig.feedTitle);
+      if (storedConfig.feedDescription) base.feedDescription = String(storedConfig.feedDescription);
+      if (storedConfig.maxPosts) base.maxPosts = Number(storedConfig.maxPosts) || base.maxPosts;
+    }
+  } catch (err) {
+    console.error('Failed to load runtime config:', err);
+  }
+
   return base;
 }
 
@@ -98,15 +108,31 @@ export async function saveRuntimeConfig(
   }
 ): Promise<void> {
   const current = await getRuntimeConfig(env);
+  const masterKey = env.ADMIN_TOKEN || 'xrss-default-key';
+
   const cleanUsername = (config.xUsername !== undefined ? config.xUsername : current.xUsername).replace(/^@/, '').trim();
   const endpoint = (config.providerEndpoint !== undefined ? config.providerEndpoint : current.providerEndpoint).trim();
-  const authToken = (config.xAuthToken !== undefined ? config.xAuthToken : current.xAuthToken).trim();
-  const csrfToken = (config.xCrfToken !== undefined ? config.xCrfToken : current.xCrfToken).trim();
+
+  // If xAuthToken is empty or '***', preserve current token!
+  let finalAuthToken = current.xAuthToken;
+  if (config.xAuthToken !== undefined && config.xAuthToken.trim() !== '' && config.xAuthToken.trim() !== '***') {
+    finalAuthToken = config.xAuthToken.trim();
+  }
+
+  // If xCrfToken is empty or '***', preserve current token!
+  let finalCrfToken = current.xCrfToken;
+  if (config.xCrfToken !== undefined && config.xCrfToken.trim() !== '' && config.xCrfToken.trim() !== '***') {
+    finalCrfToken = config.xCrfToken.trim();
+  }
+
+  // Encrypt sensitive cookies before saving to storage
+  const encAuthToken = finalAuthToken ? await encryptSecret(finalAuthToken, masterKey) : '';
+  const encCrfToken = finalCrfToken ? await encryptSecret(finalCrfToken, masterKey) : '';
 
   const payload = {
     xUsername: cleanUsername,
-    xAuthToken: authToken,
-    xCrfToken: csrfToken,
+    xAuthToken: encAuthToken,
+    xCrfToken: encCrfToken,
     providerEndpoint: endpoint,
     feedTitle: config.feedTitle?.trim() || current.feedTitle,
     feedDescription: config.feedDescription?.trim() || current.feedDescription,

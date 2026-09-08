@@ -273,18 +273,18 @@ export function renderAdminDashboardView(): string {
     <div class="grid-2">
       <!-- Config Form -->
       <div class="card">
-        <div class="card-title">X Feed & Cookie Settings</div>
+        <div class="card-title">X Feed & Cookie Settings (AES-256 Encrypted at Rest)</div>
         <form onsubmit="saveConfig(event)" style="display: flex; flex-direction: column; gap: 12px;">
           <div>
             <label>X Username</label>
             <input type="text" id="cfg-username" placeholder="e.g. elonmusk" required>
           </div>
           <div>
-            <label>X auth_token Cookie (X_AUTH_TOKEN)</label>
+            <label>X auth_token Cookie (AES-256 Encrypted)</label>
             <input type="password" id="cfg-authtoken" placeholder="Enter auth_token cookie value...">
           </div>
           <div>
-            <label>X ct0 Cookie (X_CT0)</label>
+            <label>X ct0 Cookie (AES-256 Encrypted)</label>
             <input type="password" id="cfg-csrftoken" placeholder="Enter ct0 CSRF cookie value...">
           </div>
           <div>
@@ -314,17 +314,18 @@ export function renderAdminDashboardView(): string {
       <div class="card">
         <div class="card-title">راهنمای کپی کوکیهای X.com</div>
         <p style="color: var(--muted); font-size: 12px;">
-          چون کوکی <code>auth_token</code> دارای تگ <code>HttpOnly</code> است، مینیکدهای اسکریپتی اجازه خواندن آن را ندارند. برای کپی دقیق، مراحل زیر را طی کنید:
+          چون کوکی <code>auth_token</code> دارای تگ <code>HttpOnly</code> است، اسکریپتهای کنسول اجازه خواندن آن را ندارند. برای کپی دقیق:
         </p>
         <div class="guide-box">
-          <strong style="color: #f4f4f5; display: block; margin-bottom: 6px;">روش کپی مستقیم از F12 (DevTools):</strong>
+          <strong style="color: #f4f4f5; display: block; margin-bottom: 6px;">روش کپی مستقیم از DevTools (F12):</strong>
           1. وارد <code>x.com</code> شوید.<br>
           2. کلید <code>F12</code> را بزنید.<br>
-          3. **در کرم/اج:** به تب <code>Application</code> -> سمت چپ منوی <code>Cookies</code> -> <code>https://x.com</code> بروید.<br>
-             **در فایرفاکس:** به تب <code>Storage</code> -> <code>Cookies</code> -> <code>https://x.com</code> بروید.<br>
-          4. در کادر جستجوی کوکیها:<br>
-             - مقدار <code>auth_token</code> (رشته ۴۰ کاراکتری) را کپی کرده و در کادر **X auth_token Cookie** قرار دهید.<br>
-             - مقدار <code>ct0</code> (رشته طولانی CSRF) را کپی کرده و در کادر **X ct0 Cookie** قرار دهید.
+          3. **در Chrome / Edge / Brave:** به تب <code>Application</code> ➔ از منوی سمت چپ بخش <code>Cookies</code> ➔ انتخاب <code>https://x.com</code>.<br>
+             **در Firefox:** به تب <code>Storage</code> ➔ بخش <code>Cookies</code> ➔ انتخاب <code>https://x.com</code>.<br>
+          4. مقدار کوکیهای زیر را کپی کنید:<br>
+             - <code>auth_token</code> (رشته ۴۰ کاراکتری) -> کادر <strong>auth_token</strong><br>
+             - <code>ct0</code> (رشته CSRF) -> کادر <strong>ct0</strong><br>
+          <span style="font-size: 11px; color: #10b981; margin-top: 6px; display: block;">🔒 تمام کوکیها در دیتابیس با الگوریتم AES-256-GCM بهصورت کاملاً رمزشده ذخیره میشوند.</span>
         </div>
 
         <div style="border-top: 1px solid var(--border); padding-top: 14px; margin-top: 6px;">
@@ -399,6 +400,16 @@ export function renderAdminDashboardView(): string {
           if (data.feedDescription) document.getElementById('cfg-desc').value = data.feedDescription;
           if (data.maxPosts) document.getElementById('cfg-max').value = data.maxPosts;
 
+          // Set placeholders for token fields without sending dummy text like ***
+          if (data.hasAuthToken) {
+            document.getElementById('cfg-authtoken').placeholder = '(Encrypted Token Saved — Leave empty to keep existing)';
+            document.getElementById('cfg-authtoken').value = '';
+          }
+          if (data.hasCsrfToken) {
+            document.getElementById('cfg-csrftoken').placeholder = '(Encrypted Token Saved — Leave empty to keep existing)';
+            document.getElementById('cfg-csrftoken').value = '';
+          }
+
           renderPostsTable(data.posts || []);
         }
       } catch (err) {
@@ -438,7 +449,7 @@ export function renderAdminDashboardView(): string {
         const data = await res.json();
         if (res.ok && data.success) {
           alertBox.className = 'alert alert-success';
-          alertBox.innerText = 'Settings saved successfully.';
+          alertBox.innerText = 'Settings saved successfully (AES-256 Encrypted).';
           loadStatsAndPosts();
         } else {
           alertBox.className = 'alert alert-error';

@@ -106,7 +106,7 @@ describe('Runtime Config (getRuntimeConfig & saveRuntimeConfig)', () => {
     expect(config.maxPosts).toBe(25);
   });
 
-  it('saves config to KV and DB when saveRuntimeConfig is called', async () => {
+  it('saves config to KV and DB with AES-256 encryption at rest when saveRuntimeConfig is called', async () => {
     const kvStore = new Map<string, string>();
     const mockKv = {
       get: vi.fn(async (key: string, type?: string) => {
@@ -119,7 +119,7 @@ describe('Runtime Config (getRuntimeConfig & saveRuntimeConfig)', () => {
       })
     } as unknown as KVNamespace;
 
-    const env: Env = { KV: mockKv };
+    const env: Env = { KV: mockKv, ADMIN_TOKEN: 'master_secret_key_123' };
 
     await saveRuntimeConfig(env, {
       xUsername: '@saveduser',
@@ -133,9 +133,14 @@ describe('Runtime Config (getRuntimeConfig & saveRuntimeConfig)', () => {
     expect(savedRaw).toBeDefined();
     const saved = JSON.parse(savedRaw!);
     expect(saved.xUsername).toBe('saveduser');
-    expect(saved.xAuthToken).toBe('saved_token');
-    expect(saved.xCrfToken).toBe('saved_ct0');
+    expect(saved.xAuthToken).toContain('enc:v1:');
+    expect(saved.xCrfToken).toContain('enc:v1:');
     expect(saved.feedTitle).toBe('Saved Title');
     expect(saved.maxPosts).toBe(75);
+
+    // Verify getRuntimeConfig decrypts back to original plaintext values
+    const loaded = await getRuntimeConfig(env);
+    expect(loaded.xAuthToken).toBe('saved_token');
+    expect(loaded.xCrfToken).toBe('saved_ct0');
   });
 });
