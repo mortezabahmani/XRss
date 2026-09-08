@@ -148,9 +148,11 @@ export async function handleStats(request: Request, env: Env): Promise<Response>
       try { await storage.initSchema(); } catch {}
     }
     try {
-      posts = await storage.getPosts();
-      lastUpdate = await storage.getLastUpdate();
-      lastError = await storage.getLastError();
+      [posts, lastUpdate, lastError] = await Promise.all([
+        storage.getPosts(),
+        storage.getLastUpdate(),
+        storage.getLastError()
+      ]);
     } catch {}
   }
 
@@ -202,9 +204,11 @@ export async function runSync(env: Env, requestUrl?: string): Promise<{ count: n
     if (env.DB && storage instanceof D1StorageAdapter) {
       try { await storage.initSchema(); } catch {}
     }
-    await storage.savePosts(posts);
-    await storage.setLastUpdate(new Date().toISOString());
-    await storage.setLastError(null);
+    await Promise.all([
+      storage.savePosts(posts),
+      storage.setLastUpdate(new Date().toISOString()),
+      storage.setLastError(null)
+    ]);
   }
 
   return { count: posts.length };
