@@ -57,7 +57,7 @@ export function getAdminLoginHtml(): string {
 <body>
   <div class="login-card">
     <h1>XRSS Administration</h1>
-    <p>Enter your administrative token to access the secure dashboard.</p>
+    <p>Enter your administrative token to access the secure operational dashboard.</p>
     <form onsubmit="handleLogin(event)">
       <label>Admin Token</label>
       <input type="password" id="token" placeholder="Enter ADMIN_TOKEN..." required autofocus>
@@ -82,12 +82,11 @@ export function getAdminDashboardHtml(): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>XRSS Admin Control Center</title>
+  <title>XRSS Operational Dashboard</title>
   <style>
     :root {
       --bg: #09090b;
       --card: #121215;
-      --card-hover: #18181b;
       --border: #27272a;
       --text: #f4f4f5;
       --muted: #a1a1aa;
@@ -95,7 +94,6 @@ export function getAdminDashboardHtml(): string {
       --accent-hover: #2563eb;
       --success: #10b981;
       --error: #ef4444;
-      --warning: #f59e0b;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -108,7 +106,7 @@ export function getAdminDashboardHtml(): string {
       min-height: 100vh;
     }
     .wrapper {
-      max-width: 960px;
+      max-width: 900px;
       margin: 0 auto;
       display: flex;
       flex-direction: column;
@@ -167,18 +165,13 @@ export function getAdminDashboardHtml(): string {
       color: #fff;
     }
     .btn-primary:hover { background: var(--accent-hover); }
-    .grid-2 {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 16px;
-    }
     .grid-3 {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 16px;
     }
     @media (max-width: 768px) {
-      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .grid-3 { grid-template-columns: 1fr; }
     }
     .card {
       background: var(--card);
@@ -195,9 +188,6 @@ export function getAdminDashboardHtml(): string {
       color: var(--text);
       border-bottom: 1px solid var(--border);
       padding-bottom: 12px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
     }
     .metric-label {
       font-size: 11px;
@@ -212,26 +202,6 @@ export function getAdminDashboardHtml(): string {
       margin-top: 4px;
       font-family: ui-monospace, monospace;
     }
-    label {
-      display: block;
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-    input[type="text"], input[type="url"] {
-      width: 100%;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 10px 12px;
-      font-size: 13px;
-      font-family: inherit;
-      border-radius: 6px;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    input:focus { border-color: var(--accent); }
     .alert {
       padding: 12px 16px;
       border-radius: 6px;
@@ -247,7 +217,7 @@ export function getAdminDashboardHtml(): string {
     <!-- Header -->
     <header>
       <h1>
-        XRSS Control Center
+        XRSS Operational Dashboard
         <span class="badge">
           <span class="dot"></span>
           Secure Session
@@ -270,52 +240,31 @@ export function getAdminDashboardHtml(): string {
         <div id="storage" class="metric-val" style="color: #60a5fa;">KV / D1</div>
       </div>
       <div class="card" style="padding: 18px;">
-        <div class="metric-label">Last Sync</div>
-        <div id="time" class="metric-val" style="color: var(--muted); font-size: 14px; margin-top: 8px;">Never</div>
+        <div class="metric-label">Last Ping</div>
+        <div id="time" class="metric-val" style="color: var(--muted); font-size: 14px; margin-top: 8px;">Just now</div>
       </div>
     </div>
 
-    <!-- Configuration & Provider Panel -->
-    <div class="grid-2">
-      <!-- Provider Settings -->
-      <div class="card">
-        <div class="card-title">Provider & Feed Settings</div>
-        <form onsubmit="saveConfig(event)" style="display: flex; flex-direction: column; gap: 14px;">
-          <div>
-            <label>Upstream Endpoint / X.com RSS Bridge URL</label>
-            <input type="url" id="cfg-endpoint" placeholder="https://rss.app/feeds/... or Nitter/X.com JSON API" required>
-            <span style="font-size: 11px; color: var(--muted); margin-top: 4px; display: block;">Supports RSS, Atom, or JSON endpoints (e.g. Nitter or RSS.app for X.com).</span>
-          </div>
-          <div>
-            <label>Feed Title</label>
-            <input type="text" id="cfg-title" placeholder="My Custom Feed">
-          </div>
-          <div>
-            <label>Feed Description</label>
-            <input type="text" id="cfg-desc" placeholder="Converted RSS feed">
-          </div>
-          <div>
-            <button type="submit" class="btn btn-primary">Save Configuration</button>
-          </div>
-        </form>
-        <div id="config-alert" class="alert"></div>
+    <!-- Operations Panel (ADR-002 / ADR-003 Compliance) -->
+    <div class="card">
+      <div class="card-title">Manual Synchronization Operations</div>
+      <p style="color: var(--muted); font-size: 13px;">
+        Per architectural decision (ADR-002 / ADR-003), each XRSS deployment represents one statically configured feed (defined via environment variables / wrangler.toml secrets such as <code>PROVIDER_ENDPOINT</code>). Use the button below to trigger an immediate polling and normalization cycle.
+      </p>
+      <div>
+        <button onclick="triggerSync()" class="btn btn-primary">Trigger Manual Sync (/update)</button>
       </div>
+      <div id="alert" class="alert"></div>
+    </div>
 
-      <!-- Operations & Actions -->
-      <div class="card">
-        <div class="card-title">Operations</div>
-        <div style="display: flex; flex-direction: column; gap: 16px;">
-          <div>
-            <span style="font-size: 12px; color: var(--muted); display: block; margin-bottom: 8px;">Manually trigger scraping and normalization from the configured provider endpoint.</span>
-            <button onclick="triggerSync()" class="btn btn-primary" style="width: 100%;">Run Instant Sync (/update)</button>
-          </div>
-          <div style="border-top: 1px solid var(--border); padding-top: 16px;">
-            <span style="font-size: 12px; color: var(--muted); display: block; margin-bottom: 8px;">Automatic background polling runs periodically via Cloudflare Workers Cron Triggers.</span>
-            <div style="font-size: 12px; color: var(--success); font-family: monospace;">● Cron Active (Every 1h / Scheduled)</div>
-          </div>
-        </div>
-        <div id="sync-alert" class="alert"></div>
-      </div>
+    <div class="card" style="color: var(--muted); font-size: 13px;">
+      <div class="card-title" style="color: var(--text);">Architecture & Compliance</div>
+      <p>
+        <strong>ADR-002:</strong> One deployment represents one configured feed.<br>
+        <strong>ADR-003:</strong> Handle configuration via environment, not request parameters.<br>
+        <strong>ADR-004:</strong> No arbitrary proxying (SSRF protected).<br>
+        <strong>ADR-007:</strong> Upstream failure fallback preserves last known-good feed.
+      </p>
     </div>
   </div>
 
@@ -336,72 +285,20 @@ export function getAdminDashboardHtml(): string {
       window.location.href = '/admin';
     }
 
-    async function loadConfig() {
-      try {
-        const res = await fetch('/config', {
-          headers: { 'Authorization': 'Bearer ' + getToken() }
-        });
-        if (res.ok) {
-          const cfg = await res.json();
-          if (cfg.endpoint) document.getElementById('cfg-endpoint').value = cfg.endpoint;
-          if (cfg.title) document.getElementById('cfg-title').value = cfg.title;
-          if (cfg.description) document.getElementById('cfg-desc').value = cfg.description;
-        }
-      } catch (err) {
-        console.error('Failed to load config', err);
-      }
-    }
-
-    async function saveConfig(e) {
-      e.preventDefault();
-      const endpoint = document.getElementById('cfg-endpoint').value.trim();
-      const title = document.getElementById('cfg-title').value.trim();
-      const description = document.getElementById('cfg-desc').value.trim();
-      const alertBox = document.getElementById('config-alert');
-
-      alertBox.style.display = 'block';
-      alertBox.className = 'alert';
-      alertBox.innerText = 'Saving configuration...';
-
-      try {
-        const res = await fetch('/config', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + getToken()
-          },
-          body: JSON.stringify({ endpoint, title, description })
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          alertBox.classList.add('alert-success');
-          alertBox.innerText = 'Configuration saved successfully.';
-        } else {
-          alertBox.classList.add('alert-error');
-          alertBox.innerText = 'Error: ' + (data.error || 'Failed to save');
-        }
-      } catch (err) {
-        alertBox.classList.add('alert-error');
-        alertBox.innerText = 'Network Error: ' + err.message;
-      }
-    }
-
     async function checkHealth() {
       try {
         const res = await fetch('/health');
         const data = await res.json();
         document.getElementById('status').innerText = data.status.toUpperCase();
         document.getElementById('storage').innerText = (data.storage || 'KV').toUpperCase();
-        if (data.timestamp) {
-          document.getElementById('time').innerText = new Date(data.timestamp).toLocaleTimeString();
-        }
+        document.getElementById('time').innerText = new Date(data.timestamp).toLocaleTimeString();
       } catch (err) {
         document.getElementById('status').innerText = 'ERROR';
       }
     }
 
     async function triggerSync() {
-      const alertBox = document.getElementById('sync-alert');
+      const alertBox = document.getElementById('alert');
       alertBox.style.display = 'block';
       alertBox.className = 'alert';
       alertBox.innerText = 'Synchronizing...';
@@ -427,7 +324,6 @@ export function getAdminDashboardHtml(): string {
     }
 
     checkHealth();
-    loadConfig();
   </script>
 </body>
 </html>`;
