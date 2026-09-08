@@ -22,9 +22,12 @@ export class XFeedProvider implements XDataProvider {
 
   async fetchPosts(): Promise<InternalPost[]> {
     const username = (this.config.username || '').replace(/^@/, '').trim();
-    const authToken = (this.config.authToken || '').trim();
-    const csrfToken = (this.config.csrfToken || '').trim();
+    const rawAuthToken = (this.config.authToken || '').trim();
+    const rawCsrfToken = (this.config.csrfToken || '').trim();
     const customEndpoint = (this.config.endpoint || '').trim();
+
+    const authToken = (rawAuthToken === 'undefined' || rawAuthToken === 'null') ? '' : rawAuthToken;
+    const csrfToken = (rawCsrfToken === 'undefined' || rawCsrfToken === 'null') ? '' : rawCsrfToken;
 
     let lastError: Error | null = null;
 
@@ -78,7 +81,7 @@ export class XFeedProvider implements XDataProvider {
 
     if (username && (!authToken || !csrfToken) && !customEndpoint) {
       throw new Error(
-        `X_AUTH_TOKEN or X_CT0 is missing for @${username}. Please copy auth_token & ct0 cookies from x.com in your browser into Admin Settings.`
+        `auth_token is missing or invalid for @${username}. Note: auth_token is HttpOnly so document.cookie cannot read it. Please copy auth_token from F12 -> Application -> Cookies -> https://x.com.`
       );
     }
 
@@ -150,7 +153,7 @@ export class XFeedProvider implements XDataProvider {
       clearTimeout(timeoutId);
 
       if (userResp.ok) {
-        const userData = await userResp.json() as any;
+        const userData = (await userResp.json()) as any;
         const restId = userData?.data?.user?.result?.rest_id;
 
         if (restId) {
@@ -179,7 +182,7 @@ export class XFeedProvider implements XDataProvider {
           clearTimeout(tTimeoutId);
 
           if (tweetsResp.ok) {
-            const tweetsData = await tweetsResp.json() as any;
+            const tweetsData = (await tweetsResp.json()) as any;
             const rawGqlTweets = this.extractGraphQLTweets(tweetsData);
             if (rawGqlTweets.length > 0) {
               const posts = this.processRawPosts(rawGqlTweets);
@@ -284,9 +287,6 @@ export class XFeedProvider implements XDataProvider {
       else if (Array.isArray(json.posts)) return json.posts;
       else if (Array.isArray(json.tweets)) return json.tweets;
       else if (Array.isArray(json.data)) return json.data;
-      else if (json.id || json.id_str || json.tweet_id || json.text || json.content) {
-        return [json];
-      }
     }
     return [];
   }

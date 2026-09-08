@@ -312,17 +312,19 @@ export function renderAdminDashboardView(): string {
 
       <!-- Cookie Guide & Operations -->
       <div class="card">
-        <div class="card-title">Browser Cookie Instructions</div>
+        <div class="card-title">راهنمای کپی کوکیهای X.com</div>
         <p style="color: var(--muted); font-size: 12px;">
-          برای دریافت پستهای واقعی X بدون محدودیت، کوکیهای <code>auth_token</code> و <code>ct0</code> اکانت خود را از مرورگر کپی و وارد کنید:
+          چون کوکی <code>auth_token</code> دارای تگ <code>HttpOnly</code> است، مینیکدهای اسکریپتی اجازه خواندن آن را ندارند. برای کپی دقیق، مراحل زیر را طی کنید:
         </p>
         <div class="guide-box">
-          <strong style="color: #f4f4f5; display: block; margin-bottom: 6px;">روش کپی آسان با F12 (در مرورگر):</strong>
+          <strong style="color: #f4f4f5; display: block; margin-bottom: 6px;">روش کپی مستقیم از F12 (DevTools):</strong>
           1. وارد <code>x.com</code> شوید.<br>
-          2. کلید <code>F12</code> را بزنید -> تب <code>Console</code>.<br>
-          3. این دستور را کپی و اجرا کنید:<br>
-          <code style="display: block; margin-top: 4px; overflow-x: auto; white-space: pre-wrap; word-break: break-all;">copy("auth_token=" + document.cookie.match(/auth_token=([^;]+)/)?.[1] + "\\nct0=" + document.cookie.match(/ct0=([^;]+)/)?.[1])</code>
-          <span style="font-size: 11px; color: #a1a1aa; margin-top: 6px; display: block;">مقادیر استخراجشده را در کادرهای <code>auth_token</code> و <code>ct0</code> جایگذاری کنید.</span>
+          2. کلید <code>F12</code> را بزنید.<br>
+          3. **در کرم/اج:** به تب <code>Application</code> -> سمت چپ منوی <code>Cookies</code> -> <code>https://x.com</code> بروید.<br>
+             **در فایرفاکس:** به تب <code>Storage</code> -> <code>Cookies</code> -> <code>https://x.com</code> بروید.<br>
+          4. در کادر جستجوی کوکیها:<br>
+             - مقدار <code>auth_token</code> (رشته ۴۰ کاراکتری) را کپی کرده و در کادر **X auth_token Cookie** قرار دهید.<br>
+             - مقدار <code>ct0</code> (رشته طولانی CSRF) را کپی کرده و در کادر **X ct0 Cookie** قرار دهید.
         </div>
 
         <div style="border-top: 1px solid var(--border); padding-top: 14px; margin-top: 6px;">
