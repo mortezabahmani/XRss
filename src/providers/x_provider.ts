@@ -134,13 +134,16 @@ export class XFeedProvider implements XDataProvider {
       const resp = await fetch(v1Url, { method: 'GET', headers, signal: controller.signal });
       clearTimeout(timeoutId);
 
+      const text = await resp.text();
+      const json = safeJsonParse(text);
+
       if (resp.ok) {
-        const text = await resp.text();
-        const json = safeJsonParse(text);
         if (json && Array.isArray(json) && json.length > 0) {
           const posts = this.processRawPosts(json);
           if (posts.length > 0) return posts;
         }
+      } else if (json && json.errors && json.errors[0]) {
+        authError = new Error(`X API Error (${json.errors[0].code || resp.status}): ${json.errors[0].message}`);
       } else {
         authError = new Error(`HTTP ${resp.status} ${resp.statusText} from X v1.1 API`);
       }
@@ -167,9 +170,10 @@ export class XFeedProvider implements XDataProvider {
       const userResp = await fetch(userGqlUrl, { method: 'GET', headers, signal: controller.signal });
       clearTimeout(timeoutId);
 
+      const userText = await userResp.text();
+      const userData = safeJsonParse(userText);
+
       if (userResp.ok) {
-        const userText = await userResp.text();
-        const userData = safeJsonParse(userText);
         const restId = userData?.data?.user?.result?.rest_id;
 
         if (restId) {
@@ -197,16 +201,21 @@ export class XFeedProvider implements XDataProvider {
           const tweetsResp = await fetch(tweetsGqlUrl, { method: 'GET', headers, signal: tController.signal });
           clearTimeout(tTimeoutId);
 
+          const tweetsText = await tweetsResp.text();
+          const tweetsData = safeJsonParse(tweetsText);
+
           if (tweetsResp.ok) {
-            const tweetsText = await tweetsResp.text();
-            const tweetsData = safeJsonParse(tweetsText);
             const rawGqlTweets = this.extractGraphQLTweets(tweetsData);
             if (rawGqlTweets.length > 0) {
               const posts = this.processRawPosts(rawGqlTweets);
               if (posts.length > 0) return posts;
             }
+          } else if (tweetsData && tweetsData.errors && tweetsData.errors[0]) {
+            authError = new Error(`X GraphQL Error (${tweetsData.errors[0].code || tweetsResp.status}): ${tweetsData.errors[0].message}`);
           }
         }
+      } else if (userData && userData.errors && userData.errors[0]) {
+        authError = new Error(`X GraphQL User Error (${userData.errors[0].code || userResp.status}): ${userData.errors[0].message}`);
       }
     } catch (err) {
       if (!authError) authError = err as Error;
