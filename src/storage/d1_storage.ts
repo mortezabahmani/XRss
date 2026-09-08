@@ -1,5 +1,15 @@
 import { InternalPost, StorageAdapter } from '../core/types';
 
+interface D1PostRow {
+  id: string;
+  url: string;
+  title: string;
+  content: string;
+  author: string;
+  publishedAt: string;
+  mediaUrls?: string | null;
+}
+
 export class D1StorageAdapter implements StorageAdapter {
   private db: D1Database;
 
@@ -32,9 +42,9 @@ export class D1StorageAdapter implements StorageAdapter {
   async getPosts(): Promise<InternalPost[]> {
     const { results } = await this.db.prepare(
       'SELECT * FROM posts ORDER BY publishedAt DESC LIMIT 100'
-    ).all();
+    ).all<D1PostRow>();
 
-    return (results || []).map((row: any) => ({
+    return (results || []).map((row: D1PostRow) => ({
       id: row.id,
       url: row.url,
       title: row.title,
