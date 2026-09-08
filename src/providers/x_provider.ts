@@ -114,38 +114,49 @@ export class XFeedProvider implements XDataProvider {
     }
   }
 
-  private extractPostsFromJson(json: any): any[] {
+  private extractPostsFromJson(json: unknown): unknown[] {
     if (!json) return [];
     if (Array.isArray(json)) return json;
     if (typeof json === 'object') {
-      if (Array.isArray(json.items)) return json.items;
-      else if (Array.isArray(json.posts)) return json.posts;
-      else if (Array.isArray(json.tweets)) return json.tweets;
-      else if (Array.isArray(json.data)) return json.data;
-      else if (json.user && Array.isArray(json.user.tweets)) return json.user.tweets;
-      else if (json.tweet) return [json.tweet];
+      const obj = json as Record<string, unknown>;
+      if (Array.isArray(obj.items)) return obj.items;
+      if (Array.isArray(obj.posts)) return obj.posts;
+      if (Array.isArray(obj.tweets)) return obj.tweets;
+      if (Array.isArray(obj.data)) return obj.data;
+
+      const user = typeof obj.user === 'object' && obj.user !== null
+        ? (obj.user as Record<string, unknown>)
+        : null;
+
+      if (user && Array.isArray(user.tweets)) return user.tweets;
+      if (obj.tweet) return [obj.tweet];
+
       // Single tweet or post fallback
-      else if (json.id || json.id_str || json.tweet_id || json.text || json.content) {
-        return [json];
+      if (obj.id || obj.id_str || obj.tweet_id || obj.text || obj.content) {
+        return [obj];
       }
+
       // FxTwitter / VxTwitter user object fallback
-      else if (json.user && (json.user.id || json.user.screen_name)) {
-        const u = json.user;
+      if (user && (user.id || user.screen_name)) {
+        const rawDesc = typeof user.raw_description === 'object' && user.raw_description !== null
+          ? (user.raw_description as Record<string, unknown>)
+          : null;
+
         return [{
-          id: String(u.id || u.screen_name),
-          url: u.url || `https://x.com/${u.screen_name}`,
-          title: u.name || u.screen_name || 'X Profile',
-          content: u.description || u.raw_description?.text || '',
-          author: u.name || u.screen_name || this.config.username || 'X User',
-          publishedAt: u.joined || new Date().toISOString()
+          id: String(user.id || user.screen_name),
+          url: user.url || `https://x.com/${user.screen_name}`,
+          title: user.name || user.screen_name || 'X Profile',
+          content: user.description || rawDesc?.text || '',
+          author: user.name || user.screen_name || this.config.username || 'X User',
+          publishedAt: user.joined || new Date().toISOString()
         }];
       }
     }
     return [];
   }
 
-  private extractPostsFromNextData(htmlText: string): any[] {
-    const items: any[] = [];
+  private extractPostsFromNextData(htmlText: string): unknown[] {
+    const items: unknown[] = [];
     const match = /<script id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/s.exec(htmlText);
     if (!match) return items;
 
@@ -172,8 +183,8 @@ export class XFeedProvider implements XDataProvider {
     return items;
   }
 
-  private parseXmlItems(xmlText: string): any[] {
-    const items: any[] = [];
+  private parseXmlItems(xmlText: string): unknown[] {
+    const items: unknown[] = [];
     const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
     let match: RegExpExecArray | null;
 
