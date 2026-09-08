@@ -45,28 +45,30 @@ export function parseConfig(env: Env, requestUrl?: string): AppConfig {
   };
 }
 
+function applyConfigOverrides(base: AppConfig, overrides: Record<string, any>): AppConfig {
+  if (overrides.xUsername !== undefined) base.xUsername = String(overrides.xUsername).replace(/^@/, '').trim();
+  if (overrides.providerEndpoint !== undefined) base.providerEndpoint = String(overrides.providerEndpoint).trim();
+  if (overrides.feedTitle) base.feedTitle = String(overrides.feedTitle);
+  if (overrides.feedDescription) base.feedDescription = String(overrides.feedDescription);
+  if (overrides.maxPosts) base.maxPosts = Number(overrides.maxPosts) || base.maxPosts;
+  return base;
+}
+
 export async function getRuntimeConfig(env: Env, requestUrl?: string): Promise<AppConfig> {
   const base = parseConfig(env, requestUrl);
   try {
     if (env.KV) {
       const raw = await env.KV.get('app_config', 'json');
       if (raw && typeof raw === 'object') {
-        const c = raw as Record<string, any>;
-        if (c.xUsername !== undefined) base.xUsername = String(c.xUsername).replace(/^@/, '').trim();
-        if (c.providerEndpoint !== undefined) base.providerEndpoint = String(c.providerEndpoint).trim();
-        if (c.feedTitle) base.feedTitle = String(c.feedTitle);
-        if (c.feedDescription) base.feedDescription = String(c.feedDescription);
-        if (c.maxPosts) base.maxPosts = Number(c.maxPosts) || base.maxPosts;
+        applyConfigOverrides(base, raw as Record<string, any>);
       }
     } else if (env.DB) {
       const res = await env.DB.prepare('SELECT value FROM metadata WHERE key = ?').bind('app_config').first();
       if (res && res.value) {
         const c = JSON.parse(res.value as string);
-        if (c.xUsername !== undefined) base.xUsername = String(c.xUsername).replace(/^@/, '').trim();
-        if (c.providerEndpoint !== undefined) base.providerEndpoint = String(c.providerEndpoint).trim();
-        if (c.feedTitle) base.feedTitle = String(c.feedTitle);
-        if (c.feedDescription) base.feedDescription = String(c.feedDescription);
-        if (c.maxPosts) base.maxPosts = Number(c.maxPosts) || base.maxPosts;
+        if (c && typeof c === 'object') {
+          applyConfigOverrides(base, c);
+        }
       }
     }
   } catch {}
