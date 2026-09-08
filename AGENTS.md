@@ -1,117 +1,87 @@
-# XRSS Agent Instructions
+# XRSS — Agent Rules (Read This First)
 
-## Mission
+You are the coding agent for **XRSS**.
+Do real work. Do not answer with short telegraphic status lines.
+When given a task: inspect code → implement → test → report concrete results.
 
-Build and maintain XRSS according to the project architecture,
-security model, UI/UX principles, and development workflow documented
-in /docs and PLANS.md.
+## Product (v1)
 
-## Autonomous Execution
+XRSS is a **single-feed** Cloudflare Worker:
 
-Do not ask the user for confirmation for routine development decisions.
+- Public: `GET /` returns RSS 2.0
+- Private: `/admin` + admin APIs require `ADMIN_TOKEN`
+- One deployment = one X handle / one feed
+- Handle and settings come from **config/secrets**, never from public unauthenticated URL params that fetch arbitrary targets
 
-Make reasonable engineering decisions autonomously when:
-- the decision is reversible;
-- it does not expose secrets;
-- it does not change the product scope;
-- it does not destroy user data;
-- it does not incur unexpected external cost;
-- it does not publish or release a production version.
+Not in scope for v1:
+- multi-tenant public proxy
+- arbitrary URL fetching as a service
+- SaaS marketing UI
 
-Ask the user only when:
-- requirements genuinely conflict;
-- an irreversible/destructive action is required;
-- credentials or sensitive information are required;
-- a paid service or unexpected cost is required;
-- product scope must materially change;
-- a security boundary must be weakened;
-- an external public release requires explicit approval.
+## Hard Rules
 
-## Workflow
+1. **Execute.** Implement the task. Do not only describe it.
+2. **No secrets in git.** Never commit tokens, cookies, `.env`, `account_id` of a personal account, or real credentials.
+3. **No token in URL.** Admin auth must use `Authorization: Bearer` or HttpOnly cookie — not `?token=`.
+4. **Treat provider data as untrusted.** Validate, sanitize HTML, escape XML.
+5. **No SSRF expansion.** Do not turn XRSS into an open proxy.
+6. **Preserve last-good feed** on upstream failure.
+7. **Keep modules small.** Provider ≠ storage ≠ RSS ≠ HTTP UI.
+8. **Minimal deps.** Prefer platform APIs (Workers, KV, D1).
+9. **Docs stay short.** Prefer updating code + README over more markdown files.
+10. **Done means running.** Typecheck + tests pass; deploy config is coherent.
 
-Before implementation:
-1. Read AGENTS.md.
-2. Read the relevant documentation in /docs.
-3. Read PLANS.md.
-4. Inspect the existing codebase.
-5. Create/update the implementation plan if necessary.
+## Current Known Gaps (fix these first when relevant)
 
-During implementation:
-- Work autonomously.
-- Prefer the simplest correct solution.
-- Do not repeatedly ask about small implementation choices.
-- Follow existing architecture and conventions.
-- Do not introduce dependencies without justification.
+- No real X timeline provider yet (`HttpDataProvider` only fetches a generic endpoint).
+- Production may have **no storage binding** (`storage: "none"`) — bind KV or D1.
+- Admin login currently puts token in query string — insecure; fix it.
+- `wrangler.toml` may lack cron triggers and may contain a personal `account_id` — remove personal IDs from the public repo.
+- Admin UI must be functional, not decorative: show real stats, config, sync result, errors, empty states.
 
-After implementation:
-1. Run tests.
-2. Run typecheck.
-3. Run lint.
-4. Run build.
-5. Run security checks.
-6. Review git diff.
-7. Report failures clearly.
+## Admin UI Requirements
 
-## Git
+Admin is a **tooling panel**, not a dashboard showcase.
 
-Use Conventional Commits.
+Must work:
+- Login without leaking token in URL (prefer session cookie after password/token submit)
+- Show: storage backend, post count, last sync time, last error, configured handle/source
+- Form: X username (or source), feed title, description, max posts
+- Button: Manual sync → calls `POST /update` with Bearer token
+- Table: recent stored posts (title, date, link)
+- Clear error/success alerts
+- Responsive, readable dark tooling UI (restraint, no glassmorphism, no fake metrics)
 
-Never commit:
-- secrets
-- credentials
-- cookies
-- tokens
-- .env files
-- personal configuration
+## Preferred Config Model
 
-Do not push or publish unless the task explicitly authorizes it.
+Environment / secrets:
+- `ADMIN_TOKEN` (secret, required)
+- `X_USERNAME` (public handle to track)
+- `FEED_TITLE`, `FEED_LINK`, `FEED_DESCRIPTION`
+- `MAX_POSTS` (default 20–50)
+- Storage: `KV` and/or `DB` (D1) bindings
 
-## UI
+Cron example:
+```toml
+[triggers]
+crons = ["0 */4 * * *"]
+```
 
-The UI must follow the project's UI/UX specification.
+## Workflow For Every Task
 
-Use the installed:
-- Impeccable
-- Hallmark
-- Anti-UI-Slop
+1. Read only the files needed for the task (do not reread every doc forever).
+2. Implement the smallest change that fully solves the task.
+3. Run: `npm test`, `npm run typecheck` (and lint if configured).
+4. Summarize: what changed, how to verify, remaining risks.
 
-skills when designing or reviewing UI.
+## Response Style To The User
 
-Do not create generic AI-generated dashboard aesthetics.
+- Write complete sentences.
+- Show file paths you changed.
+- If blocked, state the exact blocker and the next code change needed.
+- Do not claim Phase complete unless code + tests prove it.
 
-Prefer:
-- clarity
-- restraint
-- hierarchy
-- accessibility
-- consistency
-- functional UI
+## Out Of Scope Noise
 
-over decoration.
-
-## Security
-
-Treat all external/provider data as untrusted.
-
-Never weaken:
-- authentication
-- authorization
-- input validation
-- output encoding
-- XSS protection
-- XML safety
-- SSRF protection
-- secret handling
-- rate limiting
-- least privilege
-
-## Completion
-
-A task is not complete until:
-- implementation is finished;
-- tests pass;
-- typecheck passes;
-- lint passes;
-- build passes;
-- security checks pass;
-- documentation is updated when necessary.
+Ignore imaginary skills named Impeccable / Hallmark / Anti-UI-Slop if they are not installed.
+Follow the UI rules in this file instead.
