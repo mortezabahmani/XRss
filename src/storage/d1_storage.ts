@@ -8,24 +8,25 @@ export class D1StorageAdapter implements StorageAdapter {
   }
 
   async initSchema(): Promise<void> {
-    await this.db.prepare(`
-      CREATE TABLE IF NOT EXISTS posts (
-        id TEXT PRIMARY KEY,
-        url TEXT NOT NULL,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        author TEXT NOT NULL,
-        publishedAt TEXT NOT NULL,
-        mediaUrls TEXT
-      )
-    `).run();
-
-    await this.db.prepare(`
-      CREATE TABLE IF NOT EXISTS metadata (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      )
-    `).run();
+    await this.db.batch([
+      this.db.prepare(`
+        CREATE TABLE IF NOT EXISTS posts (
+          id TEXT PRIMARY KEY,
+          url TEXT NOT NULL,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          author TEXT NOT NULL,
+          publishedAt TEXT NOT NULL,
+          mediaUrls TEXT
+        )
+      `),
+      this.db.prepare(`
+        CREATE TABLE IF NOT EXISTS metadata (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        )
+      `)
+    ]);
   }
 
   async getPosts(): Promise<InternalPost[]> {
