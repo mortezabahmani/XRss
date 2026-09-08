@@ -1,6 +1,7 @@
 import { InternalPost, XDataProvider } from '../core/types';
 import { normalizePost } from '../core/normalizer';
 import { validatePost } from '../core/validator';
+import { parseXmlItems } from './xml_parser';
 
 export interface XProviderConfig {
   username?: string;
@@ -94,7 +95,7 @@ export class XFeedProvider implements XDataProvider {
       } else if (text.includes('__NEXT_DATA__')) {
         rawPosts = this.extractPostsFromNextData(text);
       } else {
-        rawPosts = this.parseXmlItems(text);
+        rawPosts = parseXmlItems(text, this.config.username || 'X Post');
       }
 
       const validPosts: InternalPost[] = [];
@@ -168,38 +169,6 @@ export class XFeedProvider implements XDataProvider {
         }
       }
     } catch {}
-
-    return items;
-  }
-
-  private parseXmlItems(xmlText: string): any[] {
-    const items: any[] = [];
-    const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
-    let match: RegExpExecArray | null;
-
-    while ((match = itemRegex.exec(xmlText)) !== null) {
-      const itemContent = match[1];
-      const getTag = (tag: string) => {
-        const m = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\/${tag}>`, 'i').exec(itemContent);
-        return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim() : '';
-      };
-
-      const title = getTag('title');
-      const link = getTag('link');
-      const description = getTag('description') || getTag('content:encoded');
-      const pubDate = getTag('pubDate');
-      const author = getTag('author') || getTag('dc:creator');
-      const guid = getTag('guid') || link;
-
-      items.push({
-        id: guid,
-        url: link,
-        title,
-        content: description,
-        author: author || this.config.username || 'X Post',
-        pubDate
-      });
-    }
 
     return items;
   }

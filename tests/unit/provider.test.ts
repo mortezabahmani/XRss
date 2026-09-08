@@ -1,5 +1,56 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { XFeedProvider } from '../../src/providers/x_provider';
+import { parseXmlItems } from '../../src/providers/xml_parser';
+
+describe('parseXmlItems', () => {
+  it('parses valid RSS XML items with title, link, description, pubDate, author, and guid', () => {
+    const xml = `
+      <rss version="2.0">
+        <channel>
+          <title>Test Feed</title>
+          <item>
+            <title><![CDATA[Test Title]]></title>
+            <link>https://example.com/post/1</link>
+            <description><![CDATA[<p>Test content</p>]]></description>
+            <pubDate>Sun, 08 Mar 2026 12:00:00 GMT</pubDate>
+            <dc:creator>John Doe</dc:creator>
+            <guid>post-1</guid>
+          </item>
+        </channel>
+      </rss>
+    `;
+
+    const items = parseXmlItems(xml);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual({
+      id: 'post-1',
+      url: 'https://example.com/post/1',
+      title: 'Test Title',
+      content: '<p>Test content</p>',
+      author: 'John Doe',
+      pubDate: 'Sun, 08 Mar 2026 12:00:00 GMT'
+    });
+  });
+
+  it('uses defaultAuthor when author tag is missing', () => {
+    const xml = `
+      <item>
+        <title>No Author Item</title>
+        <link>https://example.com/post/2</link>
+      </item>
+    `;
+
+    const items = parseXmlItems(xml, 'Fallback Author');
+    expect(items).toHaveLength(1);
+    expect(items[0].author).toBe('Fallback Author');
+    expect(items[0].id).toBe('https://example.com/post/2');
+  });
+
+  it('returns empty array for XML with no items', () => {
+    const xml = `<rss><channel><title>Empty</title></channel></rss>`;
+    expect(parseXmlItems(xml)).toEqual([]);
+  });
+});
 
 describe('XFeedProvider', () => {
   beforeEach(() => {
