@@ -59,9 +59,9 @@ export async function getRuntimeConfig(env: Env, requestUrl?: string): Promise<A
   const base = parseConfig(env, requestUrl);
   const masterKey = env.ADMIN_TOKEN || 'xrss-default-key';
 
-  try {
-    let storedConfig: Record<string, any> | null = null;
+  let storedConfig: Record<string, any> | null = null;
 
+  try {
     if (env.KV) {
       storedConfig = await env.KV.get('app_config', 'json');
     } else if (env.DB) {
@@ -70,26 +70,44 @@ export async function getRuntimeConfig(env: Env, requestUrl?: string): Promise<A
         storedConfig = JSON.parse(res.value as string);
       }
     }
-
-    if (storedConfig && typeof storedConfig === 'object') {
-      if (storedConfig.xUsername !== undefined) base.xUsername = String(storedConfig.xUsername).replace(/^@/, '').trim();
-      
-      if (storedConfig.xAuthToken) {
-        const decToken = await decryptSecret(String(storedConfig.xAuthToken), masterKey);
-        if (decToken) base.xAuthToken = decToken;
-      }
-      if (storedConfig.xCrfToken) {
-        const decCrf = await decryptSecret(String(storedConfig.xCrfToken), masterKey);
-        if (decCrf) base.xCrfToken = decCrf;
-      }
-
-      if (storedConfig.providerEndpoint !== undefined) base.providerEndpoint = String(storedConfig.providerEndpoint).trim();
-      if (storedConfig.feedTitle) base.feedTitle = String(storedConfig.feedTitle);
-      if (storedConfig.feedDescription) base.feedDescription = String(storedConfig.feedDescription);
-      if (storedConfig.maxPosts) base.maxPosts = Number(storedConfig.maxPosts) || base.maxPosts;
-    }
   } catch (err) {
-    console.error('Failed to load runtime config:', err);
+    console.error('Failed to load runtime config from storage:', err);
+  }
+
+  if (storedConfig && typeof storedConfig === 'object') {
+    if (storedConfig.xUsername !== undefined) {
+      base.xUsername = String(storedConfig.xUsername).replace(/^@/, '').trim();
+    }
+
+    const envAuthToken = (env.X_AUTH_TOKEN || '').trim();
+    const envCrfToken = (env.X_CT0 || '').trim();
+
+    if (envAuthToken) {
+      base.xAuthToken = envAuthToken;
+    } else if (storedConfig.xAuthToken) {
+      const rawStoredToken = String(storedConfig.xAuthToken);
+      const decToken = await decryptSecret(rawStoredToken, masterKey);
+      if (rawStoredToken.startsWith('enc:v1:') && !decToken) {
+        throw new Error('cookie decrypt failed; re-save cookies or set secrets');
+      }
+      base.xAuthToken = decToken;
+    }
+
+    if (envCrfToken) {
+      base.xCrfToken = envCrfToken;
+    } else if (storedConfig.xCrfToken) {
+      const rawStoredCrf = String(storedConfig.xCrfToken);
+      const decCrf = await decryptSecret(rawStoredCrf, masterKey);
+      if (rawStoredCrf.startsWith('enc:v1:') && !decCrf) {
+        throw new Error('cookie decrypt failed; re-save cookies or set secrets');
+      }
+      base.xCrfToken = decCrf;
+    }
+
+    if (storedConfig.providerEndpoint !== undefined) base.providerEndpoint = String(storedConfig.providerEndpoint).trim();
+    if (storedConfig.feedTitle) base.feedTitle = String(storedConfig.feedTitle);
+    if (storedConfig.feedDescription) base.feedDescription = String(storedConfig.feedDescription);
+    if (storedConfig.maxPosts) base.maxPosts = Number(storedConfig.maxPosts) || base.maxPosts;
   }
 
   return base;

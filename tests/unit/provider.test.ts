@@ -90,6 +90,118 @@ describe('XFeedProvider', () => {
     expect(posts[0].url).toContain('https://x.com/mortezaa/status/999111');
   });
 
+  it('parses GraphQL UserTweets payload and constructs real status URLs like https://x.com/{user}/status/{id}', () => {
+    const graphqlFixture = {
+      data: {
+        user: {
+          result: {
+            rest_id: '123456789',
+            timeline_v2: {
+              timeline: {
+                instructions: [
+                  {
+                    type: 'TimelineAddEntries',
+                    entries: [
+                      {
+                        entryId: 'tweet-189000111222',
+                        content: {
+                          itemContent: {
+                            tweet_results: {
+                              result: {
+                                rest_id: '189000111222',
+                                legacy: {
+                                  id_str: '189000111222',
+                                  full_text: 'GraphQL Tweet content from X web client',
+                                  created_at: 'Sun Mar 08 16:00:00 +0000 2026'
+                                },
+                                core: {
+                                  user_results: {
+                                    result: {
+                                      legacy: {
+                                        name: 'Test Account',
+                                        screen_name: 'testaccount'
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    };
+
+    const provider = new XFeedProvider({ username: 'testaccount' });
+    const tweets = provider.extractGraphQLTweets(graphqlFixture, 'testaccount');
+
+    expect(tweets).toHaveLength(1);
+    expect(tweets[0].id).toBe('189000111222');
+    expect(tweets[0].url).toBe('https://x.com/testaccount/status/189000111222');
+    expect(tweets[0].title).toBe('GraphQL Tweet content from X web client');
+    expect(tweets[0].author).toBe('Test Account');
+  });
+
+  it('rejects profile-only JSON payloads (vxtwitter user profile object without tweets)', async () => {
+    const profileOnlyFixture = {
+      name: 'VxTwitter Profile User',
+      screen_name: 'vxuser',
+      description: 'This is a user bio profile without any tweets',
+      followers: 1234,
+      following: 567,
+      likes: 890,
+      tweets: []
+    };
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        text: () => Promise.resolve(JSON.stringify(profileOnlyFixture))
+      })
+    );
+
+    const provider = new XFeedProvider({ username: 'vxuser' });
+    await expect(provider.fetchPosts()).rejects.toThrow();
+  });
+
+  it('surfaces exact upstream status code and body in strategy errors on authenticated failure', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        headers: { get: () => 'application/json' },
+        text: () => Promise.resolve(JSON.stringify({ errors: [{ code: 215, message: 'Bad authentication data.' }] }))
+      })
+    );
+
+    const provider = new XFeedProvider({
+      username: 'testuser',
+      authToken: 'invalid_auth_token',
+      csrfToken: 'invalid_ct0'
+    });
+
+    try {
+      await provider.fetchPosts();
+      expect.fail('Should have thrown strategy error');
+    } catch (err) {
+      const msg = (err as Error).message;
+      expect(msg).toContain('[Strategy A: REST v1.1 user_timeline]');
+      expect(msg).toContain('HTTP 403');
+      expect(msg).toContain('Bad authentication data.');
+    }
+  });
+
   it('fetches and normalizes JSON posts for a username', async () => {
     const mockData = [
       {
@@ -159,7 +271,9 @@ describe('XFeedProvider', () => {
       vi.fn().mockResolvedValue({
         ok: false,
         status: 404,
-        statusText: 'Not Found'
+        statusText: 'Not Found',
+        headers: { get: () => 'text/plain' },
+        text: () => Promise.resolve('Not Found')
       })
     );
 
