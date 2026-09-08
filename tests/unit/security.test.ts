@@ -29,3 +29,28 @@ describe('Security Middleware', () => {
     expect(secured.headers.get('Content-Security-Policy')).toContain("default-src 'self'");
   });
 });
+
+describe('Information Exposure Prevention', () => {
+  it('does not expose internal error details in handleFeed response', async () => {
+    const { handleFeed } = await import('../../src/http/handlers');
+    const sensitiveErrorMessage = 'D1_ERROR: connection refused at 10.0.0.12:5432 with password=secret';
+    const mockDb = {
+      prepare: () => {
+        throw new Error(sensitiveErrorMessage);
+      }
+    } as unknown as D1Database;
+
+    const mockEnv = {
+      DB: mockDb
+    };
+
+    const req = new Request('https://example.com/');
+    const res = await handleFeed(req, mockEnv as any);
+
+    expect(res.status).toBe(500);
+    const body = await res.text();
+    expect(body).toBe('Error generating feed');
+    expect(body).not.toContain(sensitiveErrorMessage);
+    expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
+  });
+});

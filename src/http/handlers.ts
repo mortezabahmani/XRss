@@ -274,7 +274,8 @@ export async function handleFeed(request: Request, env: Env): Promise<Response> 
     });
     return addSecurityHeaders(res);
   } catch (error) {
-    const res = new Response(`Error generating feed: ${(error as Error).message}`, { status: 500 });
+    console.error('Error generating feed:', error);
+    const res = new Response('Error generating feed', { status: 500 });
     return addSecurityHeaders(res);
   }
 }
