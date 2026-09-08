@@ -18,4 +18,6 @@ export interface StorageAdapter {
   savePosts(posts: InternalPost[]): Promise<void>;
   getLastUpdate(): Promise<string | null>;
   setLastUpdate(timestamp: string): Promise<void>;
+  getLastError(): Promise<string | null>;
+  setLastError(error: string | null): Promise<void>;
 }

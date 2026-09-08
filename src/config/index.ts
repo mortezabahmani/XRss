@@ -6,7 +6,9 @@ export interface Env {
   FEED_LINK?: string;
   FEED_DESCRIPTION?: string;
   PROVIDER_ENDPOINT?: string;
+  X_USERNAME?: string;
   ADMIN_TOKEN?: string;
+  MAX_POSTS?: string;
 }
 
 export interface AppConfig {
@@ -15,7 +17,9 @@ export interface AppConfig {
   feedLink?: string;
   feedDescription: string;
   providerEndpoint: string;
+  xUsername: string;
   adminToken?: string;
+  maxPosts: number;
 }
 
 export function parseConfig(env: Env, requestUrl?: string): AppConfig {
@@ -26,13 +30,18 @@ export function parseConfig(env: Env, requestUrl?: string): AppConfig {
     } catch {}
   }
 
+  const xUsername = (env.X_USERNAME || '').replace(/^@/, '').trim();
+  const providerEndpoint = env.PROVIDER_ENDPOINT || (xUsername ? `https://nitter.poast.org/${xUsername}/rss` : '');
+
   return {
     environment: env.ENVIRONMENT || 'production',
-    feedTitle: env.FEED_TITLE || 'XRSS Feed',
+    feedTitle: env.FEED_TITLE || (xUsername ? `@${xUsername} on X` : 'XRSS Feed'),
     feedLink: env.FEED_LINK || origin,
-    feedDescription: env.FEED_DESCRIPTION || 'Secure self-hosted RSS feed converted by XRSS',
-    providerEndpoint: env.PROVIDER_ENDPOINT || 'https://api.example.com/posts',
-    adminToken: env.ADMIN_TOKEN
+    feedDescription: env.FEED_DESCRIPTION || (xUsername ? `Public posts from @${xUsername} on X` : 'Secure self-hosted RSS feed converted by XRSS'),
+    providerEndpoint,
+    xUsername,
+    adminToken: env.ADMIN_TOKEN,
+    maxPosts: env.MAX_POSTS ? parseInt(env.MAX_POSTS, 10) : 100
   };
 }
 
@@ -42,30 +51,48 @@ export async function getRuntimeConfig(env: Env, requestUrl?: string): Promise<A
     if (env.KV) {
       const raw = await env.KV.get('app_config', 'json');
       if (raw && typeof raw === 'object') {
-        const c = raw as Record<string, string>;
-        if (c.providerEndpoint) base.providerEndpoint = c.providerEndpoint;
-        if (c.feedTitle) base.feedTitle = c.feedTitle;
-        if (c.feedDescription) base.feedDescription = c.feedDescription;
+        const c = raw as Record<string, any>;
+        if (c.xUsername) base.xUsername = String(c.xUsername).replace(/^@/, '').trim();
+        if (c.providerEndpoint) base.providerEndpoint = String(c.providerEndpoint);
+        if (c.feedTitle) base.feedTitle = String(c.feedTitle);
+        if (c.feedDescription) base.feedDescription = String(c.feedDescription);
+        if (c.maxPosts) base.maxPosts = Number(c.maxPosts) || base.maxPosts;
       }
     } else if (env.DB) {
       const res = await env.DB.prepare('SELECT value FROM metadata WHERE key = ?').bind('app_config').first();
       if (res && res.value) {
         const c = JSON.parse(res.value as string);
-        if (c.providerEndpoint) base.providerEndpoint = c.providerEndpoint;
-        if (c.feedTitle) base.feedTitle = c.feedTitle;
-        if (c.feedDescription) base.feedDescription = c.feedDescription;
+        if (c.xUsername) base.xUsername = String(c.xUsername).replace(/^@/, '').trim();
+        if (c.providerEndpoint) base.providerEndpoint = String(c.providerEndpoint);
+        if (c.feedTitle) base.feedTitle = String(c.feedTitle);
+        if (c.feedDescription) base.feedDescription = String(c.feedDescription);
+        if (c.maxPosts) base.maxPosts = Number(c.maxPosts) || base.maxPosts;
       }
     }
   } catch {}
   return base;
 }
 
-export async function saveRuntimeConfig(env: Env, config: { providerEndpoint?: string; feedTitle?: string; feedDescription?: string }): Promise<void> {
+export async function saveRuntimeConfig(
+  env: Env,
+  config: { xUsername?: string; providerEndpoint?: string; feedTitle?: string; feedDescription?: string; maxPosts?: number }
+): Promise<void> {
   const current = await getRuntimeConfig(env);
+  const cleanUsername = (config.xUsername !== undefined ? config.xUsername : current.xUsername).replace(/^@/, '').trim();
+  
+  let endpoint = config.providerEndpoint?.trim();
+  if (!endpoint && cleanUsername) {
+    endpoint = `https://nitter.poast.org/${cleanUsername}/rss`;
+  } else if (!endpoint) {
+    endpoint = current.providerEndpoint;
+  }
+
   const payload = {
-    providerEndpoint: config.providerEndpoint?.trim() || current.providerEndpoint,
+    xUsername: cleanUsername,
+    providerEndpoint: endpoint,
     feedTitle: config.feedTitle?.trim() || current.feedTitle,
-    feedDescription: config.feedDescription?.trim() || current.feedDescription
+    feedDescription: config.feedDescription?.trim() || current.feedDescription,
+    maxPosts: config.maxPosts || current.maxPosts
   };
 
   if (env.KV) {

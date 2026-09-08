@@ -24,7 +24,7 @@ export class KVStorageAdapter implements StorageAdapter {
 
     const merged = Array.from(map.values())
       .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
-      .slice(0, 100); // Retain last 100
+      .slice(0, 100);
 
     await this.kv.put('posts', JSON.stringify(merged));
   }
@@ -39,5 +39,21 @@ export class KVStorageAdapter implements StorageAdapter {
 
   async setLastUpdate(timestamp: string): Promise<void> {
     await this.kv.put('last_update', timestamp);
+  }
+
+  async getLastError(): Promise<string | null> {
+    try {
+      return await this.kv.get('last_error');
+    } catch {
+      return null;
+    }
+  }
+
+  async setLastError(error: string | null): Promise<void> {
+    if (error === null) {
+      await this.kv.delete('last_error');
+    } else {
+      await this.kv.put('last_error', error);
+    }
   }
 }

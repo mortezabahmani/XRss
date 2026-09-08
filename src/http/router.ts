@@ -1,12 +1,24 @@
 import { Env } from '../config';
-import { handleAdmin, handleHealth, handleUpdate, handleFeed, handleStats, handleConfigApi } from './handlers';
+import {
+  handleAdmin, handleAdminLogin, handleAdminLogout,
+  handleHealth, handleUpdate, handleFeed,
+  handleStats, handleConfigApi
+} from './handlers';
 
 export async function routeRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  const path = url.pathname.toLowerCase();
+  const path = url.pathname;
 
   if (path === '/admin') {
     return handleAdmin(request, env);
+  }
+
+  if (path === '/admin/login') {
+    return handleAdminLogin(request, env);
+  }
+
+  if (path === '/admin/logout') {
+    return handleAdminLogout(request, env);
   }
 
   if (path === '/api/stats') {

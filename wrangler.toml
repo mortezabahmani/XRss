@@ -1,8 +1,16 @@
 name = "xrss"
 main = "src/index.ts"
 compatibility_date = "2024-11-06"
-account_id = "c91d701c2294a68b384d61394ab09aeb"
 workers_dev = true
 
 [vars]
 ENVIRONMENT = "production"
+FEED_TITLE = "XRSS Feed"
+FEED_DESCRIPTION = "Secure self-hosted RSS feed for public X posts"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "895bc2c5a6354354becdce069c1e2836"
+
+[triggers]
+crons = ["0 */4 * * *"]

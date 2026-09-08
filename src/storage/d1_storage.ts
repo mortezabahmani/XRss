@@ -80,4 +80,22 @@ export class D1StorageAdapter implements StorageAdapter {
       'INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)'
     ).bind('last_update', timestamp).run();
   }
+
+  async getLastError(): Promise<string | null> {
+    const res = await this.db.prepare(
+      'SELECT value FROM metadata WHERE key = ?'
+    ).bind('last_error').first();
+
+    return res ? (res.value as string) : null;
+  }
+
+  async setLastError(error: string | null): Promise<void> {
+    if (error === null) {
+      await this.db.prepare('DELETE FROM metadata WHERE key = ?').bind('last_error').run();
+    } else {
+      await this.db.prepare(
+        'INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)'
+      ).bind('last_error', error).run();
+    }
+  }
 }

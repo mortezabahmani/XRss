@@ -1,106 +1,79 @@
 # XRSS
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/mortezabahmani/XRss)
-[![CI/CD](https://github.com/mortezabahmani/XRss/actions/workflows/ci.yml/badge.svg)](https://github.com/mortezabahmani/XRss/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-**XRSS** is a secure, lightweight, self-hosted RSS adapter designed to convert public posts into standard RSS 2.0 feeds on **Cloudflare Workers**.
+**XRSS** is a secure, lightweight, self-hosted RSS 2.0 adapter for public X (Twitter) feeds running on **Cloudflare Workers**.
 
 ---
 
-## Architecture & Data Flow
+## Key Features
 
-```text
-[XDataProvider]
-       ↓
-[Normalizer]
-       ↓
-[Validator (SSRF / Schema Check)]
-       ↓
-[Sanitizer (HTML XSS Protection)]
-       ↓
-[Internal Post Model]
-       ↓
-[Cloudflare D1 Storage (Deduplication & Retention)]
-       ↓
-[RSS 2.0 Generator]
-       ↓
-[Security Middleware (HSTS, CSP, X-Frame-Options)]
-       ↓
-[HTTP Response / RSS Feed]
-```
-
----
-
-## Security Model (`docs/SECURITY.md`)
-
-- **Untrusted External Data**: All provider responses are treated as untrusted and strictly validated.
-- **SSRF Protection**: Prevents requests targeting localhost, loopback, private networks, and cloud metadata endpoints.
-- **XSS Sanitization**: Strips dangerous HTML tags (`<script>`, `<iframe>`, `<object>`, `<embed>`, event handlers, and `javascript:` URIs).
-- **Admin Authentication**: Mutation endpoints (e.g., `/update`) require a secure `Authorization: Bearer <ADMIN_TOKEN>` header with timing-safe comparison.
-- **Security Headers**: Automatically injects strict production headers (`HSTS`, `CSP`, `X-Frame-Options`, `X-Content-Type-Options`).
-- **Resilience**: Upstream failures preserve the last known-good feed (`ADR-007`).
+- **Single Feed Model**: One worker deployment represents one configured public X account feed.
+- **Automated Cron Polling**: Periodically polls upstream public X endpoints (e.g. every 4 hours) and appends/deduplicates posts.
+- **Resilient Fallback**: Upstream network or Nitter failures preserve the last known-good feed without breaking subscribers.
+- **Security-First**: Strict XSS HTML sanitization, SSRF IP/scheme validation, timing-safe Bearer authentication, and HttpOnly session cookies for `/admin`.
+- **Restrained Admin Control Center**: Dark, functional control panel for configuring target usernames, viewing cached posts, tracking sync status/errors, and triggering instant sync.
 
 ---
 
 ## Configuration & Environment Variables
 
-Configure via `wrangler.toml` (`[vars]` and secrets):
+Configure via `wrangler.toml` (`[vars]`) or Cloudflare Workers secrets:
 
-| Variable | Description | Default |
+| Variable | Description | Default / Example |
 | :--- | :--- | :--- |
-| `FEED_TITLE` | RSS Feed Title | `XRSS Feed` |
-| `FEED_LINK` | Feed Website Link | Request Origin |
-| `FEED_DESCRIPTION` | Feed Description | `Secure self-hosted RSS feed converted by XRSS` |
-| `PROVIDER_ENDPOINT` | Upstream JSON/RSS API Endpoint | `https://api.example.com/posts` |
-| `ADMIN_TOKEN` | Secret Bearer token for triggering `/update` | *(Required for admin mutations)* |
+| `X_USERNAME` | Target public X (Twitter) username | `elonmusk` |
+| `ADMIN_TOKEN` | Administrative secret for `/admin` & `/update` | *(Required secret)* |
+| `FEED_TITLE` | Custom RSS Feed Title | `@username on X` |
+| `FEED_DESCRIPTION` | Feed Description | `Public posts from @username on X` |
+| `MAX_POSTS` | Maximum retention post count in storage | `100` |
 
-Set production secret:
+### Setting Admin Secret
 ```bash
 npx wrangler secret put ADMIN_TOKEN
 ```
 
 ---
 
-## Development & Testing
+## Local Verification & Testing
 
-### Prerequisites
-- Node.js 18+
-- npm
-
-### Installation
+### Installation & Setup
 ```bash
 git clone https://github.com/mortezabahmani/XRss.git
 cd XRss
 npm install
 ```
 
-### Local Development
-```bash
-npm run dev
-```
-
-### Testing & Typechecking
+### Run Tests & Typecheck
 ```bash
 npm test
 npm run typecheck
+```
+
+### Local Dev Server
+```bash
+npm run dev
 ```
 
 ---
 
 ## Deployment
 
-### One-Click Deploy
-Click the button below to deploy XRSS instantly to your Cloudflare Workers account:
-
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/button)
-
 ### Manual CLI Deployment
 ```bash
-npx wrangler d1 create xrss-db
-# Configure database_id in wrangler.toml
 npx wrangler deploy
 ```
+
+---
+
+## Verification & API Endpoints
+
+- `GET /` or `GET /feed.xml` — Public RSS 2.0 feed output.
+- `GET /health` — Service health & storage status JSON.
+- `GET /admin` — Secure Admin Control Center.
+- `POST /admin/login` — Authenticates admin token and sets an `HttpOnly` session cookie.
+- `POST /update` — Triggers immediate post fetching and storage update (requires `Authorization: Bearer <ADMIN_TOKEN>` or active session cookie).
 
 ---
 

@@ -49,23 +49,47 @@ export function renderAdminLoginView(): string {
       font-size: 14px; font-weight: 500; border-radius: 6px; cursor: pointer; margin-top: 16px; transition: background 0.2s;
     }
     button:hover { background: var(--accent-hover); }
+    .alert { padding: 10px 12px; border-radius: 6px; font-size: 12px; margin-top: 12px; display: none; }
+    .alert-error { background: rgba(239, 68, 68, 0.1); border: 1px solid var(--error); color: var(--error); }
   </style>
 </head>
 <body>
   <div class="login-card">
     <h1>XRSS Control Center</h1>
-    <p>Enter your administrative token to manage feeds and storage.</p>
+    <p>Enter your administrative token to access operational controls.</p>
     <form onsubmit="handleLogin(event)">
       <label>Admin Token</label>
       <input type="password" id="token" placeholder="Enter ADMIN_TOKEN..." required autofocus>
       <button type="submit">Access Control Center</button>
     </form>
+    <div id="login-alert" class="alert"></div>
   </div>
   <script>
-    function handleLogin(e) {
+    async function handleLogin(e) {
       e.preventDefault();
       const token = document.getElementById('token').value.trim();
-      window.location.href = '/admin?token=' + encodeURIComponent(token);
+      const alertBox = document.getElementById('login-alert');
+      alertBox.style.display = 'none';
+
+      try {
+        const res = await fetch('/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          window.location.href = '/admin';
+        } else {
+          alertBox.className = 'alert alert-error';
+          alertBox.innerText = data.error || 'Invalid token';
+          alertBox.style.display = 'block';
+        }
+      } catch (err) {
+        alertBox.className = 'alert alert-error';
+        alertBox.innerText = 'Network error: ' + err.message;
+        alertBox.style.display = 'block';
+      }
     }
   </script>
 </body>
@@ -90,6 +114,7 @@ export function renderAdminDashboardView(): string {
       --accent-hover: #1d4ed8;
       --success: #10b981;
       --error: #ef4444;
+      --warning: #f59e0b;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -135,12 +160,7 @@ export function renderAdminDashboardView(): string {
       font-size: 11px;
       font-weight: 500;
     }
-    .dot {
-      width: 6px;
-      height: 6px;
-      background: var(--success);
-      border-radius: 50%;
-    }
+    .dot { width: 6px; height: 6px; background: var(--success); border-radius: 50%; }
     .btn {
       background: var(--card);
       color: var(--text);
@@ -188,7 +208,7 @@ export function renderAdminDashboardView(): string {
     .metric-val { font-size: 18px; font-weight: 600; margin-top: 4px; font-family: ui-monospace, monospace; }
 
     label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 6px; }
-    input[type="text"], input[type="url"] {
+    input[type="text"], input[type="url"], input[type="number"] {
       width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
       padding: 10px 12px; font-size: 13px; font-family: inherit; border-radius: 6px; outline: none; transition: border-color 0.2s;
     }
@@ -230,7 +250,7 @@ export function renderAdminDashboardView(): string {
         <div id="stat-count" class="metric-val" style="color: #60a5fa;">0</div>
       </div>
       <div class="card">
-        <div class="metric-label">Storage Adapter</div>
+        <div class="metric-label">Storage Backend</div>
         <div id="stat-storage" class="metric-val" style="color: var(--muted);">KV / D1</div>
       </div>
       <div class="card">
@@ -239,41 +259,53 @@ export function renderAdminDashboardView(): string {
       </div>
     </div>
 
-    <!-- Feed Settings & Controls Panel -->
+    <!-- Error Banner (if lastError exists) -->
+    <div id="error-banner" class="alert alert-error" style="display: none; width: 100%;">
+      <strong>Last Upstream Error:</strong> <span id="error-text"></span>
+    </div>
+
+    <!-- Settings & Operations Grid -->
     <div class="grid-2">
-      <!-- Provider Config Form -->
+      <!-- Config Form -->
       <div class="card">
-        <div class="card-title">Feed & Source Configuration</div>
+        <div class="card-title">X Feed Settings</div>
         <form onsubmit="saveConfig(event)" style="display: flex; flex-direction: column; gap: 12px;">
           <div>
-            <label>Provider Endpoint / X Source URL</label>
-            <input type="url" id="cfg-endpoint" placeholder="https://rss.app/feeds/... or Nitter/X RSS endpoint" required>
-            <span style="font-size: 11px; color: var(--muted); margin-top: 4px; display: block;">Enter public RSS/JSON feed URL for X.com account or bridge.</span>
+            <label>X (Twitter) Username</label>
+            <input type="text" id="cfg-username" placeholder="e.g. elonmusk">
+          </div>
+          <div>
+            <label>Fallback / Custom Endpoint URL</label>
+            <input type="url" id="cfg-endpoint" placeholder="https://nitter.poast.org/username/rss">
           </div>
           <div>
             <label>Feed Title</label>
-            <input type="text" id="cfg-title" placeholder="XRSS Feed">
+            <input type="text" id="cfg-title" placeholder="My X Feed">
           </div>
           <div>
             <label>Feed Description</label>
-            <input type="text" id="cfg-desc" placeholder="Converted RSS feed">
+            <input type="text" id="cfg-desc" placeholder="Public posts from X">
+          </div>
+          <div>
+            <label>Max Retention Posts</label>
+            <input type="number" id="cfg-max" value="100" min="10" max="500">
           </div>
           <div style="margin-top: 4px;">
-            <button type="submit" class="btn btn-primary" style="width: 100%;">Save Source Settings</button>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Save Settings</button>
           </div>
         </form>
         <div id="config-alert" class="alert"></div>
       </div>
 
-      <!-- Sync Controls -->
+      <!-- Sync Controls & Runtime Info -->
       <div class="card">
-        <div class="card-title">Manual & Auto Polling</div>
+        <div class="card-title">Manual & Scheduled Sync</div>
         <p style="color: var(--muted); font-size: 13px;">
-          Trigger an immediate fetch and normalize cycle from your configured provider endpoint, or let Cloudflare Workers Cron handle hourly polling.
+          Periodic updates run via Cloudflare Cron Triggers every 4 hours. Click below to execute an immediate fetch and update storage.
         </p>
         <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;">
-          <button onclick="triggerSync()" class="btn btn-primary">Run Manual Sync Now (/update)</button>
-          <button onclick="refreshPosts()" class="btn">Refresh Local View</button>
+          <button onclick="triggerSync()" class="btn btn-primary">Sync Now (/update)</button>
+          <button onclick="refreshPosts()" class="btn">Refresh View</button>
         </div>
         <div id="action-alert" class="alert"></div>
       </div>
@@ -282,14 +314,14 @@ export function renderAdminDashboardView(): string {
     <!-- Posts Table -->
     <div class="card">
       <div class="card-title">
-        Cached Feed Items
+        Cached Posts
         <span id="posts-count-badge" style="font-size: 12px; font-weight: normal; color: var(--muted);">0 items</span>
       </div>
       <div style="overflow-x: auto;">
         <table>
           <thead>
             <tr>
-              <th>Title</th>
+              <th>Title / Content</th>
               <th>Author</th>
               <th>Published</th>
               <th>Link</th>
@@ -306,73 +338,18 @@ export function renderAdminDashboardView(): string {
   </div>
 
   <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    const queryToken = urlParams.get('token');
-    if (queryToken) {
-      sessionStorage.setItem('xrss_token', queryToken);
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-
-    function getToken() { return sessionStorage.getItem('xrss_token') || ''; }
-    function logout() { sessionStorage.removeItem('xrss_token'); window.location.href = '/admin'; }
-
-    async function loadConfig() {
-      try {
-        const res = await fetch('/api/config', {
-          headers: { 'Authorization': 'Bearer ' + getToken() }
-        });
-        if (res.ok) {
-          const cfg = await res.json();
-          if (cfg.providerEndpoint) document.getElementById('cfg-endpoint').value = cfg.providerEndpoint;
-          if (cfg.feedTitle) document.getElementById('cfg-title').value = cfg.feedTitle;
-          if (cfg.feedDescription) document.getElementById('cfg-desc').value = cfg.feedDescription;
-        }
-      } catch (err) {
-        console.error('Failed to load config', err);
-      }
-    }
-
-    async function saveConfig(e) {
-      e.preventDefault();
-      const endpoint = document.getElementById('cfg-endpoint').value.trim();
-      const title = document.getElementById('cfg-title').value.trim();
-      const description = document.getElementById('cfg-desc').value.trim();
-      const alertBox = document.getElementById('config-alert');
-
-      alertBox.style.display = 'block';
-      alertBox.className = 'alert';
-      alertBox.innerText = 'Saving configuration...';
-
-      try {
-        const res = await fetch('/api/config', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + getToken()
-          },
-          body: JSON.stringify({ providerEndpoint: endpoint, feedTitle: title, feedDescription: description })
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          alertBox.className = 'alert alert-success';
-          alertBox.innerText = 'Configuration saved successfully.';
-          loadStatsAndPosts();
-        } else {
-          alertBox.className = 'alert alert-error';
-          alertBox.innerText = 'Error: ' + (data.error || 'Failed to save');
-        }
-      } catch (err) {
-        alertBox.className = 'alert alert-error';
-        alertBox.innerText = 'Network Error: ' + err.message;
-      }
+    async function logout() {
+      await fetch('/admin/logout', { method: 'POST' });
+      window.location.href = '/admin';
     }
 
     async function loadStatsAndPosts() {
-      const token = getToken();
       try {
-        const res = await fetch('/api/stats', {
-          headers: { 'Authorization': 'Bearer ' + token }
-        });
+        const res = await fetch('/api/stats');
+        if (res.status === 401) {
+          window.location.href = '/admin';
+          return;
+        }
         if (res.ok) {
           const data = await res.json();
           document.getElementById('stat-status').innerText = (data.status || 'OK').toUpperCase();
@@ -381,9 +358,19 @@ export function renderAdminDashboardView(): string {
           document.getElementById('stat-time').innerText = data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'Never';
           document.getElementById('posts-count-badge').innerText = (data.count || 0) + ' items';
 
-          if (data.providerEndpoint && !document.getElementById('cfg-endpoint').value) {
-            document.getElementById('cfg-endpoint').value = data.providerEndpoint;
+          const errBanner = document.getElementById('error-banner');
+          if (data.lastError) {
+            document.getElementById('error-text').innerText = data.lastError;
+            errBanner.style.display = 'block';
+          } else {
+            errBanner.style.display = 'none';
           }
+
+          if (data.xUsername) document.getElementById('cfg-username').value = data.xUsername;
+          if (data.providerEndpoint) document.getElementById('cfg-endpoint').value = data.providerEndpoint;
+          if (data.feedTitle) document.getElementById('cfg-title').value = data.feedTitle;
+          if (data.feedDescription) document.getElementById('cfg-desc').value = data.feedDescription;
+          if (data.maxPosts) document.getElementById('cfg-max').value = data.maxPosts;
 
           renderPostsTable(data.posts || []);
         }
@@ -392,10 +379,44 @@ export function renderAdminDashboardView(): string {
       }
     }
 
+    async function saveConfig(e) {
+      e.preventDefault();
+      const username = document.getElementById('cfg-username').value.trim();
+      const endpoint = document.getElementById('cfg-endpoint').value.trim();
+      const title = document.getElementById('cfg-title').value.trim();
+      const description = document.getElementById('cfg-desc').value.trim();
+      const maxPosts = parseInt(document.getElementById('cfg-max').value, 10);
+
+      const alertBox = document.getElementById('config-alert');
+      alertBox.style.display = 'block';
+      alertBox.className = 'alert';
+      alertBox.innerText = 'Saving configuration...';
+
+      try {
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ xUsername: username, providerEndpoint: endpoint, feedTitle: title, feedDescription: description, maxPosts })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          alertBox.className = 'alert alert-success';
+          alertBox.innerText = 'Settings saved successfully.';
+          loadStatsAndPosts();
+        } else {
+          alertBox.className = 'alert alert-error';
+          alertBox.innerText = 'Error: ' + (data.error || 'Failed to save');
+        }
+      } catch (err) {
+        alertBox.className = 'alert alert-error';
+        alertBox.innerText = 'Network error: ' + err.message;
+      }
+    }
+
     function renderPostsTable(posts) {
       const tbody = document.getElementById('posts-body');
       if (!posts || posts.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="color: var(--muted); text-align: center; padding: 24px;">No posts stored yet. Run sync to fetch items.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" style="color: var(--muted); text-align: center; padding: 24px;">No posts stored yet. Click Sync Now to fetch posts.</td></tr>';
         return;
       }
       tbody.innerHTML = posts.map(p => \`
@@ -403,7 +424,7 @@ export function renderAdminDashboardView(): string {
           <td>
             <div style="font-weight: 500; color: var(--text);" class="truncate">\${escapeHtml(p.title || 'Untitled')}</div>
           </td>
-          <td style="color: var(--muted);">\${escapeHtml(p.author || 'Unknown')}</td>
+          <td style="color: var(--muted);">@\${escapeHtml((p.author || '').replace(/^@/, ''))}</td>
           <td style="color: var(--muted); font-family: monospace; font-size: 12px;">\${new Date(p.publishedAt).toLocaleDateString()}</td>
           <td><a href="\${escapeHtml(p.url)}" target="_blank" style="color: var(--accent); text-decoration: none;">View ↗</a></td>
         </tr>
@@ -418,31 +439,28 @@ export function renderAdminDashboardView(): string {
       const alertBox = document.getElementById('action-alert');
       alertBox.style.display = 'block';
       alertBox.className = 'alert';
-      alertBox.innerText = 'Synchronizing with upstream provider...';
+      alertBox.innerText = 'Fetching and processing posts...';
 
       try {
-        const res = await fetch('/update', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + getToken() }
-        });
+        const res = await fetch('/update', { method: 'POST' });
         const data = await res.json();
         if (res.ok && data.success) {
           alertBox.className = 'alert alert-success';
-          alertBox.innerText = 'Sync Complete: Fetched ' + (data.count || 0) + ' posts.';
+          alertBox.innerText = 'Sync Successful: Processed ' + (data.count || 0) + ' posts.';
           loadStatsAndPosts();
         } else {
           alertBox.className = 'alert alert-error';
-          alertBox.innerText = 'Sync Error: ' + (data.error || 'Failed to update');
+          alertBox.innerText = 'Sync Error: ' + (data.error || 'Update failed');
+          loadStatsAndPosts();
         }
       } catch (err) {
         alertBox.className = 'alert alert-error';
-        alertBox.innerText = 'Network Error: ' + err.message;
+        alertBox.innerText = 'Network error: ' + err.message;
       }
     }
 
     function refreshPosts() { loadStatsAndPosts(); }
 
-    loadConfig();
     loadStatsAndPosts();
   </script>
 </body>

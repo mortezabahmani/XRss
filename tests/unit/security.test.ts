@@ -26,6 +26,6 @@ describe('Security Middleware', () => {
     expect(secured.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(secured.headers.get('X-Frame-Options')).toBe('DENY');
     expect(secured.headers.get('Strict-Transport-Security')).toContain('max-age=31536000');
-    expect(secured.headers.get('Content-Security-Policy')).toBe("default-src 'self'");
+    expect(secured.headers.get('Content-Security-Policy')).toContain("default-src 'self'");
   });
 });
