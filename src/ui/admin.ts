@@ -160,13 +160,10 @@ export function renderAdminDashboardView(): string {
     .btn-danger { border-color: rgba(239, 68, 68, 0.3); color: var(--error); }
     .btn-danger:hover { background: rgba(239, 68, 68, 0.1); }
     
-    .grid-4 {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
-    }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
     @media (max-width: 768px) {
-      .grid-4 { grid-template-columns: 1fr 1fr; }
+      .grid-2, .grid-4 { grid-template-columns: 1fr; }
     }
     .card {
       background: var(--card);
@@ -190,25 +187,16 @@ export function renderAdminDashboardView(): string {
     .metric-label { font-size: 11px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
     .metric-val { font-size: 18px; font-weight: 600; margin-top: 4px; font-family: ui-monospace, monospace; }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-      text-align: left;
+    label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 6px; }
+    input[type="text"], input[type="url"] {
+      width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 10px 12px; font-size: 13px; font-family: inherit; border-radius: 6px; outline: none; transition: border-color 0.2s;
     }
-    th {
-      border-bottom: 1px solid var(--border);
-      padding: 10px;
-      color: var(--muted);
-      font-weight: 500;
-      font-size: 11px;
-      text-transform: uppercase;
-    }
-    td {
-      border-bottom: 1px solid var(--border);
-      padding: 12px 10px;
-      vertical-align: top;
-    }
+    input:focus { border-color: var(--accent); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
+    th { border-bottom: 1px solid var(--border); padding: 10px; color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; }
+    td { border-bottom: 1px solid var(--border); padding: 12px 10px; vertical-align: top; }
     tr:last-child td { border-bottom: none; }
     
     .alert { padding: 12px 16px; border-radius: 6px; font-size: 13px; display: none; }
@@ -251,14 +239,44 @@ export function renderAdminDashboardView(): string {
       </div>
     </div>
 
-    <!-- Actions Bar -->
-    <div class="card">
-      <div class="card-title">Operational Controls</div>
-      <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-        <button onclick="triggerSync()" class="btn btn-primary">Run Sync (/update)</button>
-        <button onclick="refreshPosts()" class="btn">Refresh Data</button>
+    <!-- Feed Settings & Controls Panel -->
+    <div class="grid-2">
+      <!-- Provider Config Form -->
+      <div class="card">
+        <div class="card-title">Feed & Source Configuration</div>
+        <form onsubmit="saveConfig(event)" style="display: flex; flex-direction: column; gap: 12px;">
+          <div>
+            <label>Provider Endpoint / X Source URL</label>
+            <input type="url" id="cfg-endpoint" placeholder="https://rss.app/feeds/... or Nitter/X RSS endpoint" required>
+            <span style="font-size: 11px; color: var(--muted); margin-top: 4px; display: block;">Enter public RSS/JSON feed URL for X.com account or bridge.</span>
+          </div>
+          <div>
+            <label>Feed Title</label>
+            <input type="text" id="cfg-title" placeholder="XRSS Feed">
+          </div>
+          <div>
+            <label>Feed Description</label>
+            <input type="text" id="cfg-desc" placeholder="Converted RSS feed">
+          </div>
+          <div style="margin-top: 4px;">
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Save Source Settings</button>
+          </div>
+        </form>
+        <div id="config-alert" class="alert"></div>
       </div>
-      <div id="action-alert" class="alert"></div>
+
+      <!-- Sync Controls -->
+      <div class="card">
+        <div class="card-title">Manual & Auto Polling</div>
+        <p style="color: var(--muted); font-size: 13px;">
+          Trigger an immediate fetch and normalize cycle from your configured provider endpoint, or let Cloudflare Workers Cron handle hourly polling.
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;">
+          <button onclick="triggerSync()" class="btn btn-primary">Run Manual Sync Now (/update)</button>
+          <button onclick="refreshPosts()" class="btn">Refresh Local View</button>
+        </div>
+        <div id="action-alert" class="alert"></div>
+      </div>
     </div>
 
     <!-- Posts Table -->
@@ -298,6 +316,57 @@ export function renderAdminDashboardView(): string {
     function getToken() { return sessionStorage.getItem('xrss_token') || ''; }
     function logout() { sessionStorage.removeItem('xrss_token'); window.location.href = '/admin'; }
 
+    async function loadConfig() {
+      try {
+        const res = await fetch('/api/config', {
+          headers: { 'Authorization': 'Bearer ' + getToken() }
+        });
+        if (res.ok) {
+          const cfg = await res.json();
+          if (cfg.providerEndpoint) document.getElementById('cfg-endpoint').value = cfg.providerEndpoint;
+          if (cfg.feedTitle) document.getElementById('cfg-title').value = cfg.feedTitle;
+          if (cfg.feedDescription) document.getElementById('cfg-desc').value = cfg.feedDescription;
+        }
+      } catch (err) {
+        console.error('Failed to load config', err);
+      }
+    }
+
+    async function saveConfig(e) {
+      e.preventDefault();
+      const endpoint = document.getElementById('cfg-endpoint').value.trim();
+      const title = document.getElementById('cfg-title').value.trim();
+      const description = document.getElementById('cfg-desc').value.trim();
+      const alertBox = document.getElementById('config-alert');
+
+      alertBox.style.display = 'block';
+      alertBox.className = 'alert';
+      alertBox.innerText = 'Saving configuration...';
+
+      try {
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + getToken()
+          },
+          body: JSON.stringify({ providerEndpoint: endpoint, feedTitle: title, feedDescription: description })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          alertBox.className = 'alert alert-success';
+          alertBox.innerText = 'Configuration saved successfully.';
+          loadStatsAndPosts();
+        } else {
+          alertBox.className = 'alert alert-error';
+          alertBox.innerText = 'Error: ' + (data.error || 'Failed to save');
+        }
+      } catch (err) {
+        alertBox.className = 'alert alert-error';
+        alertBox.innerText = 'Network Error: ' + err.message;
+      }
+    }
+
     async function loadStatsAndPosts() {
       const token = getToken();
       try {
@@ -311,6 +380,10 @@ export function renderAdminDashboardView(): string {
           document.getElementById('stat-storage').innerText = (data.storage || 'NONE').toUpperCase();
           document.getElementById('stat-time').innerText = data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'Never';
           document.getElementById('posts-count-badge').innerText = (data.count || 0) + ' items';
+
+          if (data.providerEndpoint && !document.getElementById('cfg-endpoint').value) {
+            document.getElementById('cfg-endpoint').value = data.providerEndpoint;
+          }
 
           renderPostsTable(data.posts || []);
         }
@@ -369,6 +442,7 @@ export function renderAdminDashboardView(): string {
 
     function refreshPosts() { loadStatsAndPosts(); }
 
+    loadConfig();
     loadStatsAndPosts();
   </script>
 </body>

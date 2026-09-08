@@ -1,4 +1,4 @@
-import { Env, parseConfig } from '../config';
+import { Env, getRuntimeConfig, saveRuntimeConfig } from '../config';
 import { createStorage, D1StorageAdapter } from '../storage';
 import { HttpDataProvider } from '../providers/http_provider';
 import { generateRssFeed } from '../rss/generator';
@@ -28,12 +28,50 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   return addSecurityHeaders(res);
 }
 
+export async function handleConfigApi(request: Request, env: Env): Promise<Response> {
+  if (!verifyAdminAuth(request, env.ADMIN_TOKEN)) {
+    return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
+  }
+
+  if (request.method === 'GET') {
+    const cfg = await getRuntimeConfig(env, request.url);
+    return addSecurityHeaders(
+      new Response(
+        JSON.stringify({
+          providerEndpoint: cfg.providerEndpoint,
+          feedTitle: cfg.feedTitle,
+          feedDescription: cfg.feedDescription
+        }),
+        { headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+  }
+
+  if (request.method === 'POST') {
+    try {
+      const body = (await request.json()) as { providerEndpoint?: string; feedTitle?: string; feedDescription?: string };
+      await saveRuntimeConfig(env, body);
+      return addSecurityHeaders(new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } }));
+    } catch (error) {
+      return addSecurityHeaders(
+        new Response(JSON.stringify({ success: false, error: (error as Error).message }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      );
+    }
+  }
+
+  return addSecurityHeaders(new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 }));
+}
+
 export async function handleStats(request: Request, env: Env): Promise<Response> {
   if (!verifyAdminAuth(request, env.ADMIN_TOKEN)) {
     return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
   }
 
   const storage = createStorage(env);
+  const cfg = await getRuntimeConfig(env, request.url);
   let posts: InternalPost[] = [];
   let lastUpdate: string | null = null;
 
@@ -55,6 +93,9 @@ export async function handleStats(request: Request, env: Env): Promise<Response>
       count: posts.length,
       storage: env.KV ? 'kv' : env.DB ? 'd1' : 'none',
       lastUpdate: lastUpdate || new Date().toISOString(),
+      providerEndpoint: cfg.providerEndpoint,
+      feedTitle: cfg.feedTitle,
+      feedDescription: cfg.feedDescription,
       posts
     }),
     {
@@ -88,7 +129,7 @@ export async function handleUpdate(request: Request, env: Env): Promise<Response
   }
 
   const storage = createStorage(env);
-  const config = parseConfig(env, request.url);
+  const config = await getRuntimeConfig(env, request.url);
 
   try {
     const provider = new HttpDataProvider({ endpoint: config.providerEndpoint });
@@ -117,7 +158,7 @@ export async function handleUpdate(request: Request, env: Env): Promise<Response
 export async function handleFeed(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const storage = createStorage(env);
-  const config = parseConfig(env, request.url);
+  const config = await getRuntimeConfig(env, request.url);
 
   try {
     let posts: InternalPost[] = [];

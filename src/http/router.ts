@@ -1,5 +1,5 @@
 import { Env } from '../config';
-import { handleAdmin, handleHealth, handleUpdate, handleFeed, handleStats } from './handlers';
+import { handleAdmin, handleHealth, handleUpdate, handleFeed, handleStats, handleConfigApi } from './handlers';
 
 export async function routeRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
@@ -13,6 +13,10 @@ export async function routeRequest(request: Request, env: Env): Promise<Response
     return handleStats(request, env);
   }
 
+  if (path === '/api/config') {
+    return handleConfigApi(request, env);
+  }
+
   if (path === '/health' || path === '/status') {
     return handleHealth(request, env);
   }
@@ -21,6 +25,5 @@ export async function routeRequest(request: Request, env: Env): Promise<Response
     return handleUpdate(request, env);
   }
 
-  // Default route (root `/`, `/feed.xml`, or any other path) -> RSS Feed
   return handleFeed(request, env);
 }
