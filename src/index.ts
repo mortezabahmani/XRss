@@ -5,6 +5,7 @@ import { HttpDataProvider } from './providers/http_provider';
 import { generateRssFeed } from './rss/generator';
 import { addSecurityHeaders, verifyAdminAuth } from './security/middleware';
 import { StorageAdapter, InternalPost } from './core/types';
+import { getAdminDashboardHtml } from './ui/admin_dashboard';
 
 function getStorage(env: Env): StorageAdapter | null {
   if (env.KV) {
@@ -19,6 +20,14 @@ function getStorage(env: Env): StorageAdapter | null {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname === '/admin') {
+      const html = getAdminDashboardHtml();
+      const res = new Response(html, {
+        headers: { 'Content-Type': 'text/html; charset=UTF-8' }
+      });
+      return addSecurityHeaders(res);
+    }
 
     if (url.pathname === '/health' || url.pathname === '/status') {
       const res = new Response(JSON.stringify({ 
