@@ -2,6 +2,29 @@ import { InternalPost, XDataProvider } from '../core/types';
 import { normalizePost } from '../core/normalizer';
 import { validatePost } from '../core/validator';
 
+const CDATA_REGEX = /<!\[CDATA\[([\s\S]*?)\]\]>/g;
+
+const TAG_REGEX_CACHE: Record<string, RegExp> = {
+  title: /<title[^>]*>([\s\S]*?)<\/title>/i,
+  link: /<link[^>]*>([\s\S]*?)<\/link>/i,
+  description: /<description[^>]*>([\s\S]*?)<\/description>/i,
+  'content:encoded': /<content:encoded[^>]*>([\s\S]*?)<\/content:encoded>/i,
+  pubDate: /<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i,
+  author: /<author[^>]*>([\s\S]*?)<\/author>/i,
+  'dc:creator': /<dc:creator[^>]*>([\s\S]*?)<\/dc:creator>/i,
+  guid: /<guid[^>]*>([\s\S]*?)<\/guid>/i
+};
+
+function extractTagContent(xmlChunk: string, tag: string): string {
+  let regex = TAG_REGEX_CACHE[tag];
+  if (!regex) {
+    regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\/${tag}>`, 'i');
+    TAG_REGEX_CACHE[tag] = regex;
+  }
+  const match = regex.exec(xmlChunk);
+  return match ? match[1].replace(CDATA_REGEX, '$1').trim() : '';
+}
+
 export interface XProviderConfig {
   username?: string;
   endpoint?: string;
@@ -179,17 +202,13 @@ export class XFeedProvider implements XDataProvider {
 
     while ((match = itemRegex.exec(xmlText)) !== null) {
       const itemContent = match[1];
-      const getTag = (tag: string) => {
-        const m = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\/${tag}>`, 'i').exec(itemContent);
-        return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim() : '';
-      };
 
-      const title = getTag('title');
-      const link = getTag('link');
-      const description = getTag('description') || getTag('content:encoded');
-      const pubDate = getTag('pubDate');
-      const author = getTag('author') || getTag('dc:creator');
-      const guid = getTag('guid') || link;
+      const title = extractTagContent(itemContent, 'title');
+      const link = extractTagContent(itemContent, 'link');
+      const description = extractTagContent(itemContent, 'description') || extractTagContent(itemContent, 'content:encoded');
+      const pubDate = extractTagContent(itemContent, 'pubDate');
+      const author = extractTagContent(itemContent, 'author') || extractTagContent(itemContent, 'dc:creator');
+      const guid = extractTagContent(itemContent, 'guid') || link;
 
       items.push({
         id: guid,
