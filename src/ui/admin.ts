@@ -96,14 +96,8 @@ export function renderAdminLoginView(): string {
 </html>`;
 }
 
-export function renderAdminDashboardView(): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>XRSS Control Center</title>
-  <style>
+function renderAdminDashboardStyles(): string {
+  return `<style>
     :root {
       --bg: #09090b;
       --card: #121215;
@@ -223,12 +217,11 @@ export function renderAdminDashboardView(): string {
     .alert-success { background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success); color: var(--success); }
     .alert-error { background: rgba(239, 68, 68, 0.1); border: 1px solid var(--error); color: var(--error); }
     .truncate { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <!-- Header -->
-    <header>
+  </style>`;
+}
+
+function renderAdminHeader(): string {
+  return `<header>
       <h1>
         XRSS Control Center
         <span class="badge"><span class="dot"></span> Active</span>
@@ -237,10 +230,11 @@ export function renderAdminDashboardView(): string {
         <a href="/feed.xml" target="_blank" class="btn">XML Feed</a>
         <button onclick="logout()" class="btn btn-danger">Logout</button>
       </div>
-    </header>
+    </header>`;
+}
 
-    <!-- Operational Metrics -->
-    <div class="grid-4">
+function renderMetricsGrid(): string {
+  return `<div class="grid-4">
       <div class="card">
         <div class="metric-label">Status</div>
         <div id="stat-status" class="metric-val" style="color: var(--success);">HEALTHY</div>
@@ -257,15 +251,17 @@ export function renderAdminDashboardView(): string {
         <div class="metric-label">Last Sync</div>
         <div id="stat-time" class="metric-val" style="color: var(--muted); font-size: 13px; margin-top: 6px;">-</div>
       </div>
-    </div>
+    </div>`;
+}
 
-    <!-- Error Banner (if lastError exists) -->
-    <div id="error-banner" class="alert alert-error" style="display: none; width: 100%;">
+function renderErrorBanner(): string {
+  return `<div id="error-banner" class="alert alert-error" style="display: none; width: 100%;">
       <strong>Upstream Error:</strong> <span id="error-text"></span>
-    </div>
+    </div>`;
+}
 
-    <!-- Settings & Operations Grid -->
-    <div class="grid-2">
+function renderSettingsAndSyncGrid(): string {
+  return `<div class="grid-2">
       <!-- Config Form -->
       <div class="card">
         <div class="card-title">X Feed Settings</div>
@@ -311,10 +307,11 @@ export function renderAdminDashboardView(): string {
         </div>
         <div id="action-alert" class="alert"></div>
       </div>
-    </div>
+    </div>`;
+}
 
-    <!-- Posts Table -->
-    <div class="card">
+function renderPostsTableCard(): string {
+  return `<div class="card">
       <div class="card-title">
         Cached Feed Items
         <span id="posts-count-badge" style="font-size: 12px; font-weight: normal; color: var(--muted);">0 items</span>
@@ -336,10 +333,11 @@ export function renderAdminDashboardView(): string {
           </tbody>
         </table>
       </div>
-    </div>
-  </div>
+    </div>`;
+}
 
-  <script>
+function getAdminDashboardScript(): string {
+  return `<script>
     async function logout() {
       await fetch('/admin/logout', { method: 'POST' });
       window.location.href = '/admin';
@@ -464,7 +462,27 @@ export function renderAdminDashboardView(): string {
     function refreshPosts() { loadStatsAndPosts(); }
 
     loadStatsAndPosts();
-  </script>
+  </script>`;
+}
+
+export function renderAdminDashboardView(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XRSS Control Center</title>
+  ${renderAdminDashboardStyles()}
+</head>
+<body>
+  <div class="container">
+    ${renderAdminHeader()}
+    ${renderMetricsGrid()}
+    ${renderErrorBanner()}
+    ${renderSettingsAndSyncGrid()}
+    ${renderPostsTableCard()}
+  </div>
+  ${getAdminDashboardScript()}
 </body>
 </html>`;
 }
