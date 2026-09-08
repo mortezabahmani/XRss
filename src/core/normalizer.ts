@@ -1,7 +1,7 @@
 import { InternalPost } from './types';
 import { sanitizeHtml } from '../security/sanitizer';
 
-export function normalizePost(raw: any): InternalPost {
+export function normalizePost(raw: unknown): InternalPost {
   if (!raw || typeof raw !== 'object') {
     return {
       id: String(Math.random()),
@@ -13,25 +13,37 @@ export function normalizePost(raw: any): InternalPost {
     };
   }
 
-  const id = String(raw.id || raw.guid || raw.url || raw.link || Math.random());
-  const url = String(raw.url || raw.link || '').trim();
-  const rawTitle = String(raw.title || raw.text || 'Untitled').trim();
+  const record = raw as Record<string, unknown>;
+
+  const id = String(record.id || record.guid || record.url || record.link || Math.random());
+  const url = String(record.url || record.link || '').trim();
+  const rawTitle = String(record.title || record.text || 'Untitled').trim();
   const title = sanitizeHtml(rawTitle).trim();
-  const rawContent = String(raw.content || raw.description || raw.summary || raw.text || '');
+  const rawContent = String(
+    record.content || record.description || record.summary || record.text || ''
+  );
   const content = sanitizeHtml(rawContent);
-  const author = String(raw.author || raw.creator || raw.user?.name || 'Unknown').trim();
-  
-  let publishedAt = String(raw.publishedAt || raw.pubDate || raw.date || raw.created_at || '');
+
+  const userObj =
+    typeof record.user === 'object' && record.user !== null
+      ? (record.user as Record<string, unknown>)
+      : null;
+  const rawAuthor = record.author || record.creator || userObj?.name;
+  const author = String(rawAuthor || 'Unknown').trim();
+
+  let publishedAt = String(
+    record.publishedAt || record.pubDate || record.date || record.created_at || ''
+  );
   if (!publishedAt || Number.isNaN(Date.parse(publishedAt))) {
     publishedAt = new Date().toISOString();
   } else {
     publishedAt = new Date(publishedAt).toISOString();
   }
 
-  const mediaUrls: string[] = Array.isArray(raw.mediaUrls)
-    ? raw.mediaUrls.map(String)
-    : Array.isArray(raw.media)
-    ? raw.media.map(String)
+  const mediaUrls: string[] = Array.isArray(record.mediaUrls)
+    ? record.mediaUrls.map(String)
+    : Array.isArray(record.media)
+    ? record.media.map(String)
     : [];
 
   return {
