@@ -1,5 +1,5 @@
 import { Env } from '../config';
-import { handleAdmin, handleHealth, handleUpdate, handleFeed } from './handlers';
+import { handleAdmin, handleHealth, handleUpdate, handleFeed, handleStats } from './handlers';
 
 export async function routeRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
@@ -7,6 +7,10 @@ export async function routeRequest(request: Request, env: Env): Promise<Response
 
   if (path === '/admin') {
     return handleAdmin(request, env);
+  }
+
+  if (path === '/api/stats') {
+    return handleStats(request, env);
   }
 
   if (path === '/health' || path === '/status') {

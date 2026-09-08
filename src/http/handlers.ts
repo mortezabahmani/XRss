@@ -28,6 +28,42 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   return addSecurityHeaders(res);
 }
 
+export async function handleStats(request: Request, env: Env): Promise<Response> {
+  if (!verifyAdminAuth(request, env.ADMIN_TOKEN)) {
+    return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
+  }
+
+  const storage = createStorage(env);
+  let posts: InternalPost[] = [];
+  let lastUpdate: string | null = null;
+
+  if (storage) {
+    if (env.DB && storage instanceof D1StorageAdapter) {
+      try {
+        await storage.initSchema();
+      } catch {}
+    }
+    try {
+      posts = await storage.getPosts();
+      lastUpdate = await storage.getLastUpdate();
+    } catch {}
+  }
+
+  const res = new Response(
+    JSON.stringify({
+      status: 'healthy',
+      count: posts.length,
+      storage: env.KV ? 'kv' : env.DB ? 'd1' : 'none',
+      lastUpdate: lastUpdate || new Date().toISOString(),
+      posts
+    }),
+    {
+      headers: { 'Content-Type': 'application/json' }
+    }
+  );
+  return addSecurityHeaders(res);
+}
+
 export async function handleHealth(request: Request, env: Env): Promise<Response> {
   const res = new Response(
     JSON.stringify({
