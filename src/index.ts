@@ -7,19 +7,44 @@ import { addSecurityHeaders, verifyAdminAuth } from './security/middleware';
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname === '/health' || url.pathname === '/status') {
+      const res = new Response(JSON.stringify({ 
+        status: 'healthy', 
+        timestamp: new Date().toISOString(),
+        d1_bound: !!env.DB 
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      return addSecurityHeaders(res);
+    }
+
+    if (!env.DB) {
+      // Graceful fallback when D1 database is not yet bound
+      const placeholderPosts = [{
+        id: 'setup-required',
+        url: 'https://developers.cloudflare.com/d1/',
+        title: 'XRSS Setup Required: D1 Database Binding Missing',
+        content: '<p>Please bind a Cloudflare D1 database named <code>DB</code> in your wrangler.toml or Cloudflare Workers dashboard.</p>',
+        author: 'XRSS System',
+        publishedAt: new Date().toISOString()
+      }];
+      const feedXml = generateRssFeed({
+        title: env.FEED_TITLE || 'XRSS Feed',
+        link: url.origin,
+        description: env.FEED_DESCRIPTION || 'Secure self-hosted RSS feed converted by XRSS'
+      }, placeholderPosts);
+      return addSecurityHeaders(new Response(feedXml, {
+        headers: { 'Content-Type': 'application/rss+xml; charset=UTF-8' }
+      }));
+    }
+
     const storage = new D1StorageAdapter(env.DB);
 
     try {
       await storage.initSchema();
     } catch {
       // Ignore if schema already initialized
-    }
-
-    if (url.pathname === '/health' || url.pathname === '/status') {
-      const res = new Response(JSON.stringify({ status: 'healthy', timestamp: new Date().toISOString() }), {
-        headers: { 'Content-Type': 'application/json' }
-      });
-      return addSecurityHeaders(res);
     }
 
     if (url.pathname === '/update') {
@@ -75,6 +100,7 @@ export default {
   },
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    if (!env.DB) return;
     const storage = new D1StorageAdapter(env.DB);
     try {
       await storage.initSchema();
