@@ -1,5 +1,6 @@
 export interface Env {
-  DB: D1Database;
+  DB?: D1Database;
+  KV?: KVNamespace;
   FEED_TITLE?: string;
   FEED_LINK?: string;
   FEED_DESCRIPTION?: string;

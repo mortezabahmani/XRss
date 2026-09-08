@@ -1,8 +1,20 @@
 import { Env } from './core/env';
 import { D1StorageAdapter } from './storage/storage_adapter';
+import { KVStorageAdapter } from './storage/kv_storage';
 import { HttpDataProvider } from './providers/http_provider';
 import { generateRssFeed } from './rss/generator';
 import { addSecurityHeaders, verifyAdminAuth } from './security/middleware';
+import { StorageAdapter, InternalPost } from './core/types';
+
+function getStorage(env: Env): StorageAdapter | null {
+  if (env.KV) {
+    return new KVStorageAdapter(env.KV);
+  }
+  if (env.DB) {
+    return new D1StorageAdapter(env.DB);
+  }
+  return null;
+}
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -12,40 +24,14 @@ export default {
       const res = new Response(JSON.stringify({ 
         status: 'healthy', 
         timestamp: new Date().toISOString(),
-        d1_bound: !!env.DB 
+        storage: env.KV ? 'kv' : (env.DB ? 'd1' : 'none')
       }), {
         headers: { 'Content-Type': 'application/json' }
       });
       return addSecurityHeaders(res);
     }
 
-    if (!env.DB) {
-      // Graceful fallback when D1 database is not yet bound
-      const placeholderPosts = [{
-        id: 'setup-required',
-        url: 'https://developers.cloudflare.com/d1/',
-        title: 'XRSS Setup Required: D1 Database Binding Missing',
-        content: '<p>Please bind a Cloudflare D1 database named <code>DB</code> in your wrangler.toml or Cloudflare Workers dashboard.</p>',
-        author: 'XRSS System',
-        publishedAt: new Date().toISOString()
-      }];
-      const feedXml = generateRssFeed({
-        title: env.FEED_TITLE || 'XRSS Feed',
-        link: url.origin,
-        description: env.FEED_DESCRIPTION || 'Secure self-hosted RSS feed converted by XRSS'
-      }, placeholderPosts);
-      return addSecurityHeaders(new Response(feedXml, {
-        headers: { 'Content-Type': 'application/rss+xml; charset=UTF-8' }
-      }));
-    }
-
-    const storage = new D1StorageAdapter(env.DB);
-
-    try {
-      await storage.initSchema();
-    } catch {
-      // Ignore if schema already initialized
-    }
+    const storage = getStorage(env);
 
     if (url.pathname === '/update') {
       if (request.method !== 'POST') {
@@ -62,8 +48,10 @@ export default {
         const posts = await provider.fetchPosts();
 
         if (posts.length > 0) {
-          await storage.savePosts(posts);
-          await storage.setLastUpdate(new Date().toISOString());
+          if (storage) {
+            await storage.savePosts(posts);
+            await storage.setLastUpdate(new Date().toISOString());
+          }
         }
 
         return addSecurityHeaders(new Response(JSON.stringify({ success: true, count: posts.length }), {
@@ -77,9 +65,29 @@ export default {
       }
     }
 
-    // Default: Serve RSS Feed (with fallback to last known-good posts per ADR-007)
+    // Default: Serve RSS Feed
     try {
-      const posts = await storage.getPosts();
+      let posts: InternalPost[] = [];
+      if (storage) {
+        if (env.DB && storage instanceof D1StorageAdapter) {
+          try {
+            await (storage as D1StorageAdapter).initSchema();
+          } catch {}
+        }
+        posts = await storage.getPosts();
+      }
+
+      if (posts.length === 0) {
+        posts = [{
+          id: 'welcome',
+          url: url.origin,
+          title: 'XRSS Feed Operational',
+          content: '<p>XRSS is active and ready to convert posts into RSS 2.0.</p>',
+          author: 'XRSS System',
+          publishedAt: new Date().toISOString()
+        }];
+      }
+
       const feedXml = generateRssFeed({
         title: env.FEED_TITLE || 'XRSS Feed',
         link: env.FEED_LINK || url.origin,
@@ -100,10 +108,15 @@ export default {
   },
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    if (!env.DB) return;
-    const storage = new D1StorageAdapter(env.DB);
+    const storage = getStorage(env);
+    if (!storage) return;
+
     try {
-      await storage.initSchema();
+      if (env.DB && storage instanceof D1StorageAdapter) {
+        try {
+          await (storage as D1StorageAdapter).initSchema();
+        } catch {}
+      }
       const endpoint = env.PROVIDER_ENDPOINT;
       if (!endpoint) return;
 
@@ -116,7 +129,6 @@ export default {
       }
     } catch (error) {
       console.error('Scheduled update failed:', error);
-      // Preserves last known-good feed per ADR-007
     }
   }
 };
