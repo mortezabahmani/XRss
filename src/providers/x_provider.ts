@@ -13,6 +13,15 @@ export interface XProviderConfig {
 
 const DEFAULT_BEARER_TOKEN = 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 
+function safeJsonParse<T = any>(text: string): T | null {
+  if (!text || typeof text !== 'string' || !text.trim()) return null;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
 export class XFeedProvider implements XDataProvider {
   private config: XProviderConfig;
 
@@ -22,8 +31,8 @@ export class XFeedProvider implements XDataProvider {
 
   async fetchPosts(): Promise<InternalPost[]> {
     const username = (this.config.username || '').replace(/^@/, '').trim();
-    const rawAuthToken = (this.config.authToken || '').trim();
-    const rawCsrfToken = (this.config.csrfToken || '').trim();
+    const rawAuthToken = (this.config.authToken || '').trim().replace(/^["']|["']$/g, '');
+    const rawCsrfToken = (this.config.csrfToken || '').trim().replace(/^["']|["']$/g, '');
     const customEndpoint = (this.config.endpoint || '').trim();
 
     const authToken = (rawAuthToken === 'undefined' || rawAuthToken === 'null' || rawAuthToken === '***') ? '' : rawAuthToken;
@@ -107,6 +116,9 @@ export class XFeedProvider implements XDataProvider {
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
       'x-twitter-active-user': 'yes',
       'x-twitter-client-language': 'en',
+      'x-twitter-auth-type': 'OAuth2Session',
+      'Origin': 'https://x.com',
+      'Referer': `https://x.com/${encodeURIComponent(username)}`,
       'Accept': 'application/json, text/plain, */*'
     };
 
@@ -124,13 +136,13 @@ export class XFeedProvider implements XDataProvider {
 
       if (resp.ok) {
         const text = await resp.text();
-        const json = JSON.parse(text);
-        if (Array.isArray(json) && json.length > 0) {
+        const json = safeJsonParse(text);
+        if (json && Array.isArray(json) && json.length > 0) {
           const posts = this.processRawPosts(json);
           if (posts.length > 0) return posts;
         }
       } else {
-        authError = new Error(`HTTP ${resp.status} ${resp.statusText}`);
+        authError = new Error(`HTTP ${resp.status} ${resp.statusText} from X v1.1 API`);
       }
     } catch (err) {
       authError = err as Error;
@@ -156,7 +168,8 @@ export class XFeedProvider implements XDataProvider {
       clearTimeout(timeoutId);
 
       if (userResp.ok) {
-        const userData = (await userResp.json()) as any;
+        const userText = await userResp.text();
+        const userData = safeJsonParse(userText);
         const restId = userData?.data?.user?.result?.rest_id;
 
         if (restId) {
@@ -185,7 +198,8 @@ export class XFeedProvider implements XDataProvider {
           clearTimeout(tTimeoutId);
 
           if (tweetsResp.ok) {
-            const tweetsData = (await tweetsResp.json()) as any;
+            const tweetsText = await tweetsResp.text();
+            const tweetsData = safeJsonParse(tweetsText);
             const rawGqlTweets = this.extractGraphQLTweets(tweetsData);
             if (rawGqlTweets.length > 0) {
               const posts = this.processRawPosts(rawGqlTweets);
@@ -203,6 +217,7 @@ export class XFeedProvider implements XDataProvider {
 
   private extractGraphQLTweets(data: any): any[] {
     const tweets: any[] = [];
+    if (!data || typeof data !== 'object') return tweets;
     try {
       const instructions = data?.data?.user?.result?.timeline_v2?.timeline?.instructions || [];
       for (const inst of instructions) {
@@ -255,7 +270,7 @@ export class XFeedProvider implements XDataProvider {
       let rawPosts: unknown[] = [];
 
       if (contentType.includes('json') || text.trim().startsWith('{') || text.trim().startsWith('[')) {
-        const json = JSON.parse(text);
+        const json = safeJsonParse(text);
         rawPosts = this.extractPostsFromJson(json);
       } else if (text.includes('__NEXT_DATA__')) {
         rawPosts = this.extractPostsFromNextData(text);
@@ -302,7 +317,7 @@ export class XFeedProvider implements XDataProvider {
     if (!match) return items;
 
     try {
-      const data = JSON.parse(match[1]);
+      const data = safeJsonParse(match[1]);
       const timeline = data?.props?.pageProps?.timeline;
       const entries = timeline?.entries || [];
 
