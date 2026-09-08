@@ -5,7 +5,7 @@ import { HttpDataProvider } from './providers/http_provider';
 import { generateRssFeed } from './rss/generator';
 import { addSecurityHeaders, verifyAdminAuth } from './security/middleware';
 import { StorageAdapter, InternalPost } from './core/types';
-import { getAdminDashboardHtml } from './ui/admin_dashboard';
+import { getAdminDashboardHtml, getAdminLoginHtml } from './ui/admin_dashboard';
 
 function getStorage(env: Env): StorageAdapter | null {
   if (env.KV) {
@@ -22,6 +22,19 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/admin') {
+      const authHeader = request.headers.get('Authorization') || '';
+      const queryToken = url.searchParams.get('token') || '';
+      const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : '';
+      const providedToken = bearerToken || queryToken;
+
+      if (env.ADMIN_TOKEN && providedToken !== env.ADMIN_TOKEN) {
+        const loginRes = new Response(getAdminLoginHtml(), {
+          status: 401,
+          headers: { 'Content-Type': 'text/html; charset=UTF-8' }
+        });
+        return addSecurityHeaders(loginRes);
+      }
+
       const html = getAdminDashboardHtml();
       const res = new Response(html, {
         headers: { 'Content-Type': 'text/html; charset=UTF-8' }
