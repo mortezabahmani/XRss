@@ -27,11 +27,10 @@ export class XFeedProvider implements XDataProvider {
       targets.push(customEndpoint);
     }
 
-    // 2. Built-in X provider endpoints for username (no Nitter dependency)
+    // 2. Built-in X provider endpoints for username
     if (username) {
       targets.push(
-        `https://syndication.twitter.com/srv/timeline-profile/history?screen_name=${username}`,
-        `https://cdn.syndication.twimg.com/widgets/timelines/p?screen_name=${username}`,
+        `https://api.fxtwitter.com/${username}`,
         `https://api.vxtwitter.com/${username}`
       );
     }
@@ -123,9 +122,23 @@ export class XFeedProvider implements XDataProvider {
       else if (Array.isArray(json.posts)) return json.posts;
       else if (Array.isArray(json.tweets)) return json.tweets;
       else if (Array.isArray(json.data)) return json.data;
-      // Single tweet or user object fallback
+      else if (json.user && Array.isArray(json.user.tweets)) return json.user.tweets;
+      else if (json.tweet) return [json.tweet];
+      // Single tweet or post fallback
       else if (json.id || json.id_str || json.tweet_id || json.text || json.content) {
         return [json];
+      }
+      // FxTwitter / VxTwitter user object fallback
+      else if (json.user && (json.user.id || json.user.screen_name)) {
+        const u = json.user;
+        return [{
+          id: String(u.id || u.screen_name),
+          url: u.url || `https://x.com/${u.screen_name}`,
+          title: u.name || u.screen_name || 'X Profile',
+          content: u.description || u.raw_description?.text || '',
+          author: u.name || u.screen_name || this.config.username || 'X User',
+          publishedAt: u.joined || new Date().toISOString()
+        }];
       }
     }
     return [];
