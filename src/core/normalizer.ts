@@ -1,7 +1,7 @@
 import { InternalPost } from './types';
 import { sanitizeHtml } from '../security/sanitizer';
 
-export function normalizePost(raw: any): InternalPost {
+export function normalizePost(raw: unknown): InternalPost {
   if (!raw || typeof raw !== 'object') {
     return {
       id: String(Math.random()),
@@ -13,25 +13,28 @@ export function normalizePost(raw: any): InternalPost {
     };
   }
 
-  const id = String(raw.id || raw.guid || raw.url || raw.link || Math.random());
-  const url = String(raw.url || raw.link || '').trim();
-  const rawTitle = String(raw.title || raw.text || 'Untitled').trim();
+  const r = raw as Record<string, unknown>;
+  const user = (r.user && typeof r.user === 'object') ? (r.user as Record<string, unknown>) : undefined;
+
+  const id = String(r.id || r.guid || r.url || r.link || Math.random());
+  const url = String(r.url || r.link || '').trim();
+  const rawTitle = String(r.title || r.text || 'Untitled').trim();
   const title = sanitizeHtml(rawTitle).trim();
-  const rawContent = String(raw.content || raw.description || raw.summary || raw.text || '');
+  const rawContent = String(r.content || r.description || r.summary || r.text || '');
   const content = sanitizeHtml(rawContent);
-  const author = String(raw.author || raw.creator || raw.user?.name || 'Unknown').trim();
+  const author = String(r.author || r.creator || user?.name || 'Unknown').trim();
   
-  let publishedAt = String(raw.publishedAt || raw.pubDate || raw.date || raw.created_at || '');
+  let publishedAt = String(r.publishedAt || r.pubDate || r.date || r.created_at || '');
   if (!publishedAt || Number.isNaN(Date.parse(publishedAt))) {
     publishedAt = new Date().toISOString();
   } else {
     publishedAt = new Date(publishedAt).toISOString();
   }
 
-  const mediaUrls: string[] = Array.isArray(raw.mediaUrls)
-    ? raw.mediaUrls.map(String)
-    : Array.isArray(raw.media)
-    ? raw.media.map(String)
+  const mediaUrls: string[] = Array.isArray(r.mediaUrls)
+    ? r.mediaUrls.map(String)
+    : Array.isArray(r.media)
+    ? r.media.map(String)
     : [];
 
   return {

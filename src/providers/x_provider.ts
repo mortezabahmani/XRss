@@ -114,56 +114,75 @@ export class XFeedProvider implements XDataProvider {
     }
   }
 
-  private extractPostsFromJson(json: any): any[] {
+  private extractPostsFromJson(json: unknown): unknown[] {
     if (!json) return [];
     if (Array.isArray(json)) return json;
     if (typeof json === 'object') {
-      if (Array.isArray(json.items)) return json.items;
-      else if (Array.isArray(json.posts)) return json.posts;
-      else if (Array.isArray(json.tweets)) return json.tweets;
-      else if (Array.isArray(json.data)) return json.data;
-      else if (json.user && Array.isArray(json.user.tweets)) return json.user.tweets;
-      else if (json.tweet) return [json.tweet];
+      const obj = json as Record<string, unknown>;
+      if (Array.isArray(obj.items)) return obj.items;
+      else if (Array.isArray(obj.posts)) return obj.posts;
+      else if (Array.isArray(obj.tweets)) return obj.tweets;
+      else if (Array.isArray(obj.data)) return obj.data;
+      else if (obj.user && typeof obj.user === 'object' && Array.isArray((obj.user as Record<string, unknown>).tweets)) {
+        return (obj.user as Record<string, unknown>).tweets as unknown[];
+      }
+      else if (obj.tweet) return [obj.tweet];
       // Single tweet or post fallback
-      else if (json.id || json.id_str || json.tweet_id || json.text || json.content) {
-        return [json];
+      else if (obj.id || obj.id_str || obj.tweet_id || obj.text || obj.content) {
+        return [obj];
       }
       // FxTwitter / VxTwitter user object fallback
-      else if (json.user && (json.user.id || json.user.screen_name)) {
-        const u = json.user;
-        return [{
-          id: String(u.id || u.screen_name),
-          url: u.url || `https://x.com/${u.screen_name}`,
-          title: u.name || u.screen_name || 'X Profile',
-          content: u.description || u.raw_description?.text || '',
-          author: u.name || u.screen_name || this.config.username || 'X User',
-          publishedAt: u.joined || new Date().toISOString()
-        }];
+      else if (obj.user && typeof obj.user === 'object' && obj.user !== null) {
+        const u = obj.user as Record<string, unknown>;
+        if (u.id || u.screen_name) {
+          const rawDesc = u.raw_description as Record<string, unknown> | undefined;
+          return [{
+            id: String(u.id || u.screen_name),
+            url: u.url ? String(u.url) : `https://x.com/${u.screen_name}`,
+            title: String(u.name || u.screen_name || 'X Profile'),
+            content: String(u.description || rawDesc?.text || ''),
+            author: String(u.name || u.screen_name || this.config.username || 'X User'),
+            publishedAt: String(u.joined || new Date().toISOString())
+          }];
+        }
       }
     }
     return [];
   }
 
-  private extractPostsFromNextData(htmlText: string): any[] {
-    const items: any[] = [];
+  private extractPostsFromNextData(htmlText: string): unknown[] {
+    const items: unknown[] = [];
     const match = /<script id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/s.exec(htmlText);
     if (!match) return items;
 
     try {
-      const data = JSON.parse(match[1]);
-      const timeline = data?.props?.pageProps?.timeline;
-      const entries = timeline?.entries || [];
+      const data = JSON.parse(match[1]) as Record<string, unknown>;
+      const props = data?.props as Record<string, unknown> | undefined;
+      const pageProps = props?.pageProps as Record<string, unknown> | undefined;
+      const timeline = pageProps?.timeline as Record<string, unknown> | undefined;
+      const entries = (Array.isArray(timeline?.entries) ? timeline.entries : []) as Record<string, unknown>[];
 
       for (const entry of entries) {
-        const tweet = entry?.content?.item?.content?.tweet || entry?.tweet;
+        const content = entry?.content as Record<string, unknown> | undefined;
+        const item = content?.item as Record<string, unknown> | undefined;
+        const itemContent = item?.content as Record<string, unknown> | undefined;
+        const tweet = (itemContent?.tweet || entry?.tweet) as Record<string, unknown> | undefined;
+
         if (tweet) {
+          const user = tweet.user as Record<string, unknown> | undefined;
+          const id = String(tweet.id_str || tweet.id || '');
+          const screenName = String(user?.screen_name || 'i');
+          const fullText = String(tweet.full_text || tweet.text || 'X Post');
+          const author = String(user?.name || user?.screen_name || this.config.username || 'X User');
+          const publishedAt = String(tweet.created_at || new Date().toISOString());
+
           items.push({
-            id: tweet.id_str || tweet.id,
-            url: `https://x.com/${tweet.user?.screen_name || 'i'}/status/${tweet.id_str || tweet.id}`,
-            title: tweet.full_text || tweet.text || 'X Post',
-            content: tweet.full_text || tweet.text || '',
-            author: tweet.user?.name || tweet.user?.screen_name || this.config.username || 'X User',
-            publishedAt: tweet.created_at || new Date().toISOString()
+            id,
+            url: `https://x.com/${screenName}/status/${id}`,
+            title: fullText,
+            content: String(tweet.full_text || tweet.text || ''),
+            author,
+            publishedAt
           });
         }
       }
@@ -172,8 +191,8 @@ export class XFeedProvider implements XDataProvider {
     return items;
   }
 
-  private parseXmlItems(xmlText: string): any[] {
-    const items: any[] = [];
+  private parseXmlItems(xmlText: string): unknown[] {
+    const items: unknown[] = [];
     const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
     let match: RegExpExecArray | null;
 
