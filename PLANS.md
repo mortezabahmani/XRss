@@ -18,30 +18,30 @@
 - [x] Storage abstraction
 - [x] RSS generator
 
-## Phase 2 Provider [IN PROGRESS]
-- [ ] Select provider
-- [ ] Implement provider
-- [ ] Implement pagination
-- [ ] Implement incremental polling
-- [ ] Error handling
-- [ ] Rate-limit handling
+## Phase 2 Provider [COMPLETED]
+- [x] Select provider
+- [x] Implement provider
+- [x] Implement pagination
+- [x] Implement incremental polling
+- [x] Error handling
+- [x] Rate-limit handling
 
-## Phase 3 Storage
-- [ ] Evaluate D1
-- [ ] Implement storage
-- [ ] Deduplication
-- [ ] Retention
-- [ ] Concurrency handling
+## Phase 3 Storage [COMPLETED]
+- [x] Evaluate D1
+- [x] Implement storage
+- [x] Deduplication
+- [x] Retention
+- [x] Concurrency handling
 
-## Phase 4 RSS
-- [ ] RSS2.0
-- [ ] Profiles
-- [ ] Date/time
-- [ ] Timezone
-- [ ] Media
-- [ ] Content modes
+## Phase 4 RSS [COMPLETED]
+- [x] RSS2.0
+- [x] Profiles
+- [x] Date/time
+- [x] Timezone
+- [x] Media
+- [x] Content modes
 
-## Phase 5 Security
+## Phase 5 Security [IN PROGRESS]
 - [ ] Authentication
 - [ ] Authorization
 - [ ] SSRF protection
