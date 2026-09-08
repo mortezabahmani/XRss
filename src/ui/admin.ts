@@ -415,26 +415,91 @@ export function renderAdminDashboardView(): string {
       }
     }
 
+    function sanitizeUrl(url) {
+      if (!url || typeof url !== 'string') return '';
+      try {
+        const parsed = new URL(url, window.location.origin);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+          return parsed.href;
+        }
+      } catch (e) {}
+      return '';
+    }
+
     function renderPostsTable(posts) {
       const tbody = document.getElementById('posts-body');
+      if (!tbody) return;
+      tbody.textContent = '';
       if (!posts || posts.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="color: var(--muted); text-align: center; padding: 24px;">No posts stored yet. Click Sync Now to fetch posts.</td></tr>';
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 4;
+        td.style.color = 'var(--muted)';
+        td.style.textAlign = 'center';
+        td.style.padding = '24px';
+        td.textContent = 'No posts stored yet. Click Sync Now to fetch posts.';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
         return;
       }
-      tbody.innerHTML = posts.map(p => \`
-        <tr>
-          <td>
-            <div style="font-weight: 500; color: var(--text);" class="truncate">\${escapeHtml(p.title || 'Untitled')}</div>
-          </td>
-          <td style="color: var(--muted);">@\${escapeHtml((p.author || '').replace(/^@/, ''))}</td>
-          <td style="color: var(--muted); font-family: monospace; font-size: 12px;">\${new Date(p.publishedAt).toLocaleDateString()}</td>
-          <td><a href="\${escapeHtml(p.url)}" target="_blank" style="color: var(--accent); text-decoration: none;">View ↗</a></td>
-        </tr>
-      \`).join('');
+
+      posts.forEach(p => {
+        const tr = document.createElement('tr');
+
+        // Title cell
+        const tdTitle = document.createElement('td');
+        const divTitle = document.createElement('div');
+        divTitle.style.fontWeight = '500';
+        divTitle.style.color = 'var(--text)';
+        divTitle.className = 'truncate';
+        divTitle.textContent = p.title || 'Untitled';
+        tdTitle.appendChild(divTitle);
+        tr.appendChild(tdTitle);
+
+        // Author cell
+        const tdAuthor = document.createElement('td');
+        tdAuthor.style.color = 'var(--muted)';
+        const authorName = (p.author || '').replace(/^@/, '');
+        tdAuthor.textContent = authorName ? '@' + authorName : '';
+        tr.appendChild(tdAuthor);
+
+        // Date cell
+        const tdDate = document.createElement('td');
+        tdDate.style.color = 'var(--muted)';
+        tdDate.style.fontFamily = 'monospace';
+        tdDate.style.fontSize = '12px';
+        const pubDate = p.publishedAt ? new Date(p.publishedAt) : null;
+        tdDate.textContent = (pubDate && !isNaN(pubDate.getTime())) ? pubDate.toLocaleDateString() : '';
+        tr.appendChild(tdDate);
+
+        // Link cell
+        const tdLink = document.createElement('td');
+        const safeUrl = sanitizeUrl(p.url);
+        if (safeUrl) {
+          const a = document.createElement('a');
+          a.href = safeUrl;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.style.color = 'var(--accent)';
+          a.style.textDecoration = 'none';
+          a.textContent = 'View ↗';
+          tdLink.appendChild(a);
+        } else {
+          tdLink.textContent = '-';
+        }
+        tr.appendChild(tdLink);
+
+        tbody.appendChild(tr);
+      });
     }
 
     function escapeHtml(str) {
-      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
     async function triggerSync() {
