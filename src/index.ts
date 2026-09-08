@@ -2,6 +2,7 @@ import { Env } from './core/env';
 import { D1StorageAdapter } from './storage/storage_adapter';
 import { HttpDataProvider } from './providers/http_provider';
 import { generateRssFeed } from './rss/generator';
+import { addSecurityHeaders, verifyAdminAuth } from './security/middleware';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -15,12 +16,21 @@ export default {
     }
 
     if (url.pathname === '/health' || url.pathname === '/status') {
-      return new Response(JSON.stringify({ status: 'healthy', timestamp: new Date().toISOString() }), {
+      const res = new Response(JSON.stringify({ status: 'healthy', timestamp: new Date().toISOString() }), {
         headers: { 'Content-Type': 'application/json' }
       });
+      return addSecurityHeaders(res);
     }
 
-    if (url.pathname === '/update' && request.method === 'POST') {
+    if (url.pathname === '/update') {
+      if (request.method !== 'POST') {
+        return addSecurityHeaders(new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 }));
+      }
+
+      if (!verifyAdminAuth(request, env.ADMIN_TOKEN)) {
+        return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
+      }
+
       try {
         const endpoint = env.PROVIDER_ENDPOINT || 'https://api.example.com/posts';
         const provider = new HttpDataProvider({ endpoint });
@@ -31,14 +41,14 @@ export default {
           await storage.setLastUpdate(new Date().toISOString());
         }
 
-        return new Response(JSON.stringify({ success: true, count: posts.length }), {
+        return addSecurityHeaders(new Response(JSON.stringify({ success: true, count: posts.length }), {
           headers: { 'Content-Type': 'application/json' }
-        });
+        }));
       } catch (error) {
-        return new Response(JSON.stringify({ success: false, error: (error as Error).message }), {
+        return addSecurityHeaders(new Response(JSON.stringify({ success: false, error: (error as Error).message }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' }
-        });
+        }));
       }
     }
 
@@ -51,14 +61,16 @@ export default {
         description: env.FEED_DESCRIPTION || 'Secure self-hosted RSS feed converted by XRSS'
       }, posts);
 
-      return new Response(feedXml, {
+      const res = new Response(feedXml, {
         headers: {
           'Content-Type': 'application/rss+xml; charset=UTF-8',
           'Cache-Control': 'public, max-age=300'
         }
       });
+      return addSecurityHeaders(res);
     } catch (error) {
-      return new Response(`Error generating feed: ${(error as Error).message}`, { status: 500 });
+      const res = new Response(`Error generating feed: ${(error as Error).message}`, { status: 500 });
+      return addSecurityHeaders(res);
     }
   },
 

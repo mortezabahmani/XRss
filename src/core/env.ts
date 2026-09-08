@@ -4,4 +4,5 @@ export interface Env {
   FEED_LINK?: string;
   FEED_DESCRIPTION?: string;
   PROVIDER_ENDPOINT?: string;
+  ADMIN_TOKEN?: string;
 }

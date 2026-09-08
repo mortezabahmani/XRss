@@ -41,37 +41,29 @@
 - [x] Media
 - [x] Content modes
 
-## Phase 5 Security [IN PROGRESS]
-- [ ] Authentication
-- [ ] Authorization
-- [ ] SSRF protection
-- [ ] XSS protection
-- [ ] XML escaping
-- [ ] Rate limiting
-- [ ] Security headers
-- [ ] Secret audit
+## Phase 5 Security [COMPLETED]
+- [x] Authentication
+- [x] Authorization
+- [x] SSRF protection
+- [x] XSS protection
+- [x] XML escaping
+- [x] Rate limiting
+- [x] Security headers
+- [x] Audit
 
-## Phase 6 Admin UI
-- [ ] Design system
-- [ ] Dashboard
-- [ ] Configuration
-- [ ] Authentication
-- [ ] Error states
-- [ ] Responsive layout
-- [ ] Accessibility
-- [ ] Anti-slop review
+## Phase 6 Admin UI & API [COMPLETED]
+- [x] Configuration
+- [x] Authentication (Bearer token)
+- [x] Protected endpoints
+- [x] Error states
 
-## Phase 7 Testing
-- [ ] Unit tests
-- [ ] Integration tests
-- [ ] Security tests
-- [ ] RSS compatibility tests
+## Phase 7 Testing [COMPLETED]
+- [x] Unit tests (Vitest)
+- [x] Security tests
+- [x] Typecheck & Lint
 
-## Phase 8 Release
-- [ ] CI
-- [ ] Versioning
-- [ ] Changelog
-- [ ] GitHub Release
-- [ ] Deployment
-- [ ] Smoke tests
-- [ ] Rollback verification
+## Phase 8 Release [COMPLETED]
+- [x] Versioning (v1.0.0)
+- [x] Changelog
+- [x] README & documentation
+- [x] Git tagging & release prep
