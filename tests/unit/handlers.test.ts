@@ -333,10 +333,10 @@ describe('HTTP Handlers', () => {
       expect(res.status).toBe(500);
       const json = (await res.json()) as any;
       expect(json.success).toBe(false);
-      expect(json.error).toContain('Network error during sync');
+      expect(json.error).toBe('Network error during sync');
 
       const lastErr = await mockEnv.KV.get('last_error');
-      expect(lastErr).toContain('Network error during sync');
+      expect(lastErr).toBe('Network error during sync');
     });
   });
 
