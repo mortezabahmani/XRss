@@ -89,6 +89,39 @@ describe('XFeedProvider', () => {
     expect(posts[0].title).toBe('Public announcement from @github');
   });
 
+  it('fetches and normalizes FxTwitter / VxTwitter user response format', async () => {
+    const mockFxData = {
+      code: 200,
+      message: 'OK',
+      user: {
+        screen_name: 'mortezaacom',
+        url: 'https://x.com/mortezaacom',
+        id: '1963151637125713920',
+        name: 'Mortezaa',
+        description: 'Developer on X',
+        joined: 'Wed Sep 03 08:07:15 +0000 2025'
+      }
+    };
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        text: () => Promise.resolve(JSON.stringify(mockFxData))
+      })
+    );
+
+    const provider = new XFeedProvider({ username: 'mortezaacom' });
+    const posts = await provider.fetchPosts();
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0].id).toBe('1963151637125713920');
+    expect(posts[0].url).toBe('https://x.com/mortezaacom');
+    expect(posts[0].title).toBe('Mortezaa');
+    expect(posts[0].content).toBe('Developer on X');
+  });
+
   it('uses optional custom endpoint override if provided', async () => {
     const mockRssXml = `
       <rss version="2.0">
