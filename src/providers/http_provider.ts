@@ -2,6 +2,30 @@ import { InternalPost, XDataProvider } from '../core/types';
 import { normalizePost } from '../core/normalizer';
 import { validatePost } from '../core/validator';
 
+const ITEM_REGEX = /<item>([\s\S]*?)<\/item>/gi;
+const CDATA_REGEX = /<!\[CDATA\[([\s\S]*?)\]\]>/g;
+
+const TAG_REGEX_CACHE = new Map<string, RegExp>([
+  ['title', /<title[^>]*>([\s\S]*?)<\/title>/i],
+  ['link', /<link[^>]*>([\s\S]*?)<\/link>/i],
+  ['description', /<description[^>]*>([\s\S]*?)<\/description>/i],
+  ['content:encoded', /<content:encoded[^>]*>([\s\S]*?)<\/content:encoded>/i],
+  ['pubDate', /<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i],
+  ['author', /<author[^>]*>([\s\S]*?)<\/author>/i],
+  ['dc:creator', /<dc:creator[^>]*>([\s\S]*?)<\/dc:creator>/i],
+  ['guid', /<guid[^>]*>([\s\S]*?)<\/guid>/i],
+]);
+
+function getTagValue(tag: string, content: string): string {
+  let regex = TAG_REGEX_CACHE.get(tag);
+  if (!regex) {
+    regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\/${tag}>`, 'i');
+    TAG_REGEX_CACHE.set(tag, regex);
+  }
+  const match = regex.exec(content);
+  return match ? match[1].replace(CDATA_REGEX, '$1').trim() : '';
+}
+
 export interface HttpProviderConfig {
   endpoint: string;
   timeoutMs?: number;
@@ -71,31 +95,31 @@ export class HttpDataProvider implements XDataProvider {
 
   private parseXmlItems(xmlText: string): any[] {
     const items: any[] = [];
-    const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
+    ITEM_REGEX.lastIndex = 0;
     let match: RegExpExecArray | null;
 
-    while ((match = itemRegex.exec(xmlText)) !== null) {
-      const itemContent = match[1];
-      const getTag = (tag: string) => {
-        const m = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\/${tag}>`, 'i').exec(itemContent);
-        return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim() : '';
-      };
+    try {
+      while ((match = ITEM_REGEX.exec(xmlText)) !== null) {
+        const itemContent = match[1];
 
-      const title = getTag('title');
-      const link = getTag('link');
-      const description = getTag('description') || getTag('content:encoded');
-      const pubDate = getTag('pubDate');
-      const author = getTag('author') || getTag('dc:creator');
-      const guid = getTag('guid') || link;
+        const title = getTagValue('title', itemContent);
+        const link = getTagValue('link', itemContent);
+        const description = getTagValue('description', itemContent) || getTagValue('content:encoded', itemContent);
+        const pubDate = getTagValue('pubDate', itemContent);
+        const author = getTagValue('author', itemContent) || getTagValue('dc:creator', itemContent);
+        const guid = getTagValue('guid', itemContent) || link;
 
-      items.push({
-        id: guid,
-        url: link,
-        title,
-        content: description,
-        author,
-        pubDate
-      });
+        items.push({
+          id: guid,
+          url: link,
+          title,
+          content: description,
+          author,
+          pubDate
+        });
+      }
+    } finally {
+      ITEM_REGEX.lastIndex = 0;
     }
 
     return items;
