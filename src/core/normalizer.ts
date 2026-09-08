@@ -21,12 +21,11 @@ export function normalizePost(raw: any): InternalPost {
   const content = sanitizeHtml(rawContent);
   const author = String(raw.author || raw.creator || raw.user?.name || 'Unknown').trim();
   
-  let publishedAt = String(raw.publishedAt || raw.pubDate || raw.date || raw.created_at || '');
-  if (!publishedAt || Number.isNaN(Date.parse(publishedAt))) {
-    publishedAt = new Date().toISOString();
-  } else {
-    publishedAt = new Date(publishedAt).toISOString();
-  }
+  const publishedAtRaw = String(raw.publishedAt || raw.pubDate || raw.date || raw.created_at || '');
+  const timestamp = publishedAtRaw ? Date.parse(publishedAtRaw) : NaN;
+  const publishedAt = Number.isNaN(timestamp)
+    ? new Date().toISOString()
+    : new Date(timestamp).toISOString();
 
   const mediaUrls: string[] = Array.isArray(raw.mediaUrls)
     ? raw.mediaUrls.map(String)
