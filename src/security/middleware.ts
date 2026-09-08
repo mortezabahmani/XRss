@@ -35,9 +35,9 @@ export function parseCookies(request: Request): Record<string, string> {
   return cookies;
 }
 
-export function verifyAdminAuth(request: Request, envAdminToken?: string): boolean {
+export function getAuthType(request: Request, envAdminToken?: string): 'bearer' | 'session' | null {
   if (!envAdminToken || typeof envAdminToken !== 'string') {
-    return false;
+    return null;
   }
 
   // 1. Check Authorization: Bearer <token>
@@ -45,7 +45,7 @@ export function verifyAdminAuth(request: Request, envAdminToken?: string): boole
   if (authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7).trim();
     if (safeCompare(token, envAdminToken)) {
-      return true;
+      return 'bearer';
     }
   }
 
@@ -53,7 +53,45 @@ export function verifyAdminAuth(request: Request, envAdminToken?: string): boole
   const cookies = parseCookies(request);
   const sessionToken = cookies['xrss_session'];
   if (sessionToken && safeCompare(sessionToken, envAdminToken)) {
-    return true;
+    return 'session';
+  }
+
+  return null;
+}
+
+export function verifyAdminAuth(request: Request, envAdminToken?: string): boolean {
+  return getAuthType(request, envAdminToken) !== null;
+}
+
+export function verifyCsrf(request: Request): boolean {
+  const fetchSite = request.headers.get('Sec-Fetch-Site');
+  if (fetchSite && fetchSite === 'cross-site') {
+    return false;
+  }
+
+  let targetOrigin: string;
+  try {
+    targetOrigin = new URL(request.url).origin;
+  } catch {
+    return false;
+  }
+
+  const origin = request.headers.get('Origin');
+  if (origin) {
+    try {
+      return new URL(origin).origin === targetOrigin;
+    } catch {
+      return false;
+    }
+  }
+
+  const referer = request.headers.get('Referer');
+  if (referer) {
+    try {
+      return new URL(referer).origin === targetOrigin;
+    } catch {
+      return false;
+    }
   }
 
   return false;

@@ -2,7 +2,7 @@ import { Env, getRuntimeConfig, saveRuntimeConfig } from '../config';
 import { createStorage, D1StorageAdapter } from '../storage';
 import { XFeedProvider } from '../providers/x_provider';
 import { generateRssFeed } from '../rss/generator';
-import { addSecurityHeaders, verifyAdminAuth, createSessionCookieHeader, createClearSessionCookieHeader } from '../security/middleware';
+import { addSecurityHeaders, verifyAdminAuth, getAuthType, verifyCsrf, createSessionCookieHeader, createClearSessionCookieHeader } from '../security/middleware';
 import { renderAdminDashboardView, renderAdminLoginView } from '../ui/admin';
 import { InternalPost } from '../core/types';
 
@@ -45,6 +45,15 @@ export async function handleAdminLogin(request: Request, env: Env): Promise<Resp
 }
 
 export async function handleAdminLogout(request: Request, env: Env): Promise<Response> {
+  const authType = getAuthType(request, env.ADMIN_TOKEN);
+  if (!authType) {
+    return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
+  }
+
+  if (authType === 'session' && !verifyCsrf(request)) {
+    return addSecurityHeaders(new Response(JSON.stringify({ error: 'CSRF check failed' }), { status: 403 }));
+  }
+
   const res = new Response(JSON.stringify({ ok: true }), {
     headers: { 'Content-Type': 'application/json' }
   });
@@ -74,7 +83,8 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
 // ---------- API ----------
 
 export async function handleConfigApi(request: Request, env: Env): Promise<Response> {
-  if (!verifyAdminAuth(request, env.ADMIN_TOKEN)) {
+  const authType = getAuthType(request, env.ADMIN_TOKEN);
+  if (!authType) {
     return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
   }
 
@@ -95,6 +105,10 @@ export async function handleConfigApi(request: Request, env: Env): Promise<Respo
   }
 
   if (request.method === 'POST') {
+    if (authType === 'session' && !verifyCsrf(request)) {
+      return addSecurityHeaders(new Response(JSON.stringify({ error: 'CSRF check failed' }), { status: 403 }));
+    }
+
     try {
       const body = (await request.json()) as {
         xUsername?: string;
@@ -201,8 +215,13 @@ export async function handleUpdate(request: Request, env: Env): Promise<Response
     return addSecurityHeaders(new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 }));
   }
 
-  if (!verifyAdminAuth(request, env.ADMIN_TOKEN)) {
+  const authType = getAuthType(request, env.ADMIN_TOKEN);
+  if (!authType) {
     return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
+  }
+
+  if (authType === 'session' && !verifyCsrf(request)) {
+    return addSecurityHeaders(new Response(JSON.stringify({ error: 'CSRF check failed' }), { status: 403 }));
   }
 
   try {
