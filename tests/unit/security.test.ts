@@ -1,10 +1,30 @@
 import { describe, it, expect } from 'vitest';
-import { verifyAdminAuth, addSecurityHeaders, verifyCsrf, getAuthType } from '../../src/security/middleware';
+import { verifyAdminAuth, addSecurityHeaders, verifyCsrf, getAuthType, safeCompare } from '../../src/security/middleware';
 import { handleConfigApi, handleUpdate, handleAdminLogout } from '../../src/http/handlers';
 import { sanitizeHtml } from '../../src/security/sanitizer';
 import { Env } from '../../src/config';
 
 describe('Security Middleware', () => {
+  describe('safeCompare', () => {
+    it('returns true for identical strings', () => {
+      expect(safeCompare('secret123', 'secret123')).toBe(true);
+      expect(safeCompare('', '')).toBe(true);
+      expect(safeCompare('🔒-token-🔑', '🔒-token-🔑')).toBe(true);
+    });
+
+    it('returns false for different strings of same length', () => {
+      expect(safeCompare('secret123', 'secret124')).toBe(false);
+      expect(safeCompare('abc', 'xyz')).toBe(false);
+    });
+
+    it('returns false for strings of different lengths', () => {
+      expect(safeCompare('secret', 'secret123')).toBe(false);
+      expect(safeCompare('secret123', 'secret')).toBe(false);
+      expect(safeCompare('', 'a')).toBe(false);
+      expect(safeCompare('a', '')).toBe(false);
+    });
+  });
+
   it('verifies admin token correctly', () => {
     expect(verifyAdminAuth('Bearer secret123', 'secret123')).toBe(true);
     expect(verifyAdminAuth('Bearer wrong', 'secret123')).toBe(false);
