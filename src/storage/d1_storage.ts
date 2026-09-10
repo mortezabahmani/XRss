@@ -10,6 +10,10 @@ interface D1PostRow {
   mediaUrls?: string | null;
 }
 
+interface D1MetadataRow {
+  value: string;
+}
+
 export class D1StorageAdapter implements StorageAdapter {
   private db: D1Database;
 
@@ -81,9 +85,9 @@ export class D1StorageAdapter implements StorageAdapter {
   async getLastUpdate(): Promise<string | null> {
     const res = await this.db.prepare(
       'SELECT value FROM metadata WHERE key = ?'
-    ).bind('last_update').first();
+    ).bind('last_update').first<D1MetadataRow>();
 
-    return res ? (res.value as string) : null;
+    return res ? res.value : null;
   }
 
   async setLastUpdate(timestamp: string): Promise<void> {
@@ -95,9 +99,9 @@ export class D1StorageAdapter implements StorageAdapter {
   async getLastError(): Promise<string | null> {
     const res = await this.db.prepare(
       'SELECT value FROM metadata WHERE key = ?'
-    ).bind('last_error').first();
+    ).bind('last_error').first<D1MetadataRow>();
 
-    return res ? (res.value as string) : null;
+    return res ? res.value : null;
   }
 
   async setLastError(error: string | null): Promise<void> {
