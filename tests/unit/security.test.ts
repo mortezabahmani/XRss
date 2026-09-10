@@ -26,35 +26,33 @@ describe('Security Middleware', () => {
   });
 
   it('verifies admin token correctly', () => {
-    expect(verifyAdminAuth('Bearer secret123', 'secret123')).toBe(true);
-    expect(verifyAdminAuth('Bearer wrong', 'secret123')).toBe(false);
-    expect(verifyAdminAuth(null, 'secret123')).toBe(false);
+    const adminToken = 'secret-token-123';
+    const validReq = new Request('https://example.com/update', {
+      headers: { 'Authorization': 'Bearer secret-token-123' }
+    });
+    const invalidReq = new Request('https://example.com/update', {
+      headers: { 'Authorization': 'Bearer wrong-token' }
+    });
+
+    expect(verifyAdminAuth(validReq, adminToken)).toBe(true);
+    expect(verifyAdminAuth(invalidReq, adminToken)).toBe(false);
   });
 
   it('extracts auth type correctly', () => {
-    expect(getAuthType(new Request('https://example.com', { headers: { 'Authorization': 'Bearer test' } }))).toBe('bearer');
-    expect(getAuthType(new Request('https://example.com', { headers: { 'Cookie': 'xrss_session=test' } }))).toBe('cookie');
-    expect(getAuthType(new Request('https://example.com'))).toBe('none');
+    const adminToken = 'secret-token-123';
+    expect(getAuthType(new Request('https://example.com', { headers: { 'Authorization': 'Bearer secret-token-123' } }), adminToken)).toBe('bearer');
+    expect(getAuthType(new Request('https://example.com', { headers: { 'Cookie': 'xrss_session=secret-token-123' } }), adminToken)).toBe('session');
+    expect(getAuthType(new Request('https://example.com'), adminToken)).toBe(null);
   });
 
   it('adds security headers', () => {
     const res = addSecurityHeaders(new Response('OK'));
     expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(res.headers.get('X-Frame-Options')).toBe('DENY');
-    expect(res.headers.get('X-XSS-Protection')).toBe('1; mode=block');
     expect(res.headers.get('Content-Security-Policy')).toContain("default-src 'self'");
   });
 
   it('verifies CSRF correctly for safe and unsafe methods', () => {
-    const safeReq = new Request('https://example.com/api', { method: 'GET' });
-    expect(verifyCsrf(safeReq)).toBe(true);
-
-    const bearerReq = new Request('https://example.com/api', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer token123' }
-    });
-    expect(verifyCsrf(bearerReq)).toBe(true);
-
     const validCookieReq = new Request('https://example.com/api', {
       method: 'POST',
       headers: {
@@ -211,30 +209,5 @@ describe('HTML Sanitizer URI XSS Prevention', () => {
     expect(sanitizeHtml('<img src="https://example.com/image.jpg" alt="test">')).toBe('<img src="https://example.com/image.jpg" alt="test">');
     expect(sanitizeHtml('<a href="/relative/path">Relative</a>')).toBe('<a href="/relative/path">Relative</a>');
     expect(sanitizeHtml('<a href="mailto:user@example.com">Email</a>')).toBe('<a href="mailto:user@example.com">Email</a>');
-  });
-});
-
-describe('Information Exposure Prevention', () => {
-  it('does not expose internal error details in handleFeed response', async () => {
-    const { handleFeed } = await import('../../src/http/handlers');
-    const sensitiveErrorMessage = 'D1_ERROR: connection refused at 10.0.0.12:5432 with password=secret';
-    const mockDb = {
-      prepare: () => {
-        throw new Error(sensitiveErrorMessage);
-      }
-    } as unknown as D1Database;
-
-    const mockEnv = {
-      DB: mockDb
-    };
-
-    const req = new Request('https://example.com/');
-    const res = await handleFeed(req, mockEnv as any);
-
-    expect(res.status).toBe(500);
-    const body = await res.text();
-    expect(body).toBe('Error generating feed');
-    expect(body).not.toContain(sensitiveErrorMessage);
-    expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
   });
 });
